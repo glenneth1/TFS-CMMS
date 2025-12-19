@@ -21,7 +21,7 @@ This creates `tfs-cmms-YYYYMMDD.tar.gz`.
 
 ## Deployment Package Contents
 
-```
+```text
 dist/
 ├── tfs-cmms          # Standalone executable (~80-150MB)
 ├── start.sh          # Startup script
@@ -39,16 +39,18 @@ dist/
 - **Disk**: 200MB for application + database growth
 - **Ports**: 8080 (configurable)
 
-**No additional software required** - the executable is self-contained.
+No additional software required - the executable is self-contained.
 
 ## Installation Steps
 
 1. **Copy files to server**:
+
    ```bash
    scp tfs-cmms-YYYYMMDD.tar.gz user@server:/opt/
    ```
 
 2. **Extract on server**:
+
    ```bash
    cd /opt
    tar -xzvf tfs-cmms-YYYYMMDD.tar.gz
@@ -56,12 +58,14 @@ dist/
    ```
 
 3. **Start the application**:
+
    ```bash
    cd /opt/tfs-cmms
    ./start.sh
    ```
 
 4. **Access the application**:
+
    Open browser to `http://server-ip:8080`
 
 ## Running as a Service (systemd)
@@ -129,20 +133,24 @@ cp /opt/tfs-cmms/data/tfs-cmms.db /backup/tfs-cmms-$(date +%Y%m%d).db
 ## Troubleshooting
 
 ### Application won't start
+
 - Check permissions: `chmod +x tfs-cmms start.sh`
 - Check if port 8080 is in use: `netstat -tlnp | grep 8080`
 
 ### Database errors
+
 - Ensure `data/` directory exists and is writable
 - Check disk space
 
 ### Static files not loading
+
 - Verify `static/` folder is in same directory as executable
 - Check file permissions
 
 ## Cross-Platform Notes
 
 The executable is built for the same OS/architecture as the build machine. If deploying to a different Linux distribution, it should work as long as:
+
 - Same CPU architecture (x86_64)
 - glibc version is compatible (build on older system for wider compatibility)
 

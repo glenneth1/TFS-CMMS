@@ -1,6 +1,6 @@
 # TF SAFE CMMS
 
-**Task Force SAFE - Computerized Maintenance Management System**
+## Task Force SAFE - Computerized Maintenance Management System
 
 A self-hosted CMMS built with Common Lisp and the Radiance web framework, designed to meet PWS Section 17.0 requirements for the Task Force SAFE program.
 
@@ -16,7 +16,8 @@ A self-hosted CMMS built with Common Lisp and the Radiance web framework, design
 ## WO Number Format
 
 Work orders are automatically numbered:
-```
+
+```text
 TFS-<SITE_CODE>-<YEAR>-<SEQUENCE>
 Example: TFS-AJ-2025-00001
 ```
@@ -30,22 +31,26 @@ Example: TFS-AJ-2025-00001
 ## Installation
 
 1. Install SBCL:
+
    ```bash
    sudo apt install sbcl
    ```
 
 2. Install Quicklisp (if not already installed):
+
    ```bash
    curl -O https://beta.quicklisp.org/quicklisp.lisp
    sbcl --load quicklisp.lisp --eval '(quicklisp-quickstart:install)' --eval '(ql:add-to-init-file)' --quit
    ```
 
 3. Link this project to Quicklisp local-projects:
+
    ```bash
    ln -s /path/to/tfs-cmms ~/quicklisp/local-projects/
    ```
 
 4. Load and start:
+
    ```lisp
    (ql:quickload :tfs-cmms)
    (tfs-cmms:start-server)
@@ -60,7 +65,7 @@ Example: TFS-AJ-2025-00001
 (tfs-cmms:start-server :port 8080)
 ```
 
-Then open http://localhost:8080 in your browser.
+Then open <http://localhost:8080> in your browser.
 
 ### API Endpoints
 
