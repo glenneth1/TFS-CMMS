@@ -1,0 +1,184 @@
+<c:using value="(format nil 'WO ~A' (getf wo :|wo_number|))" as="title">
+  <c:include template="base.html" />
+</c:using>
+
+<div class="page-header">
+  <h1>Work Order: <span lquery="(text (getf wo :|wo_number|))" /></h1>
+  <span class="badge" lquery="(text (getf wo :|priority|)) 
+                              (add-class (format nil 'badge-~A' (string-downcase (getf wo :|priority|))))" />
+</div>
+
+<div class="wo-detail-grid">
+  <section class="card">
+    <h2>Status & Progress</h2>
+    <form method="post" action="/api/work-orders/update" class="update-form">
+      <input type="hidden" name="id" lquery="(val (getf wo :|id|))" />
+      
+      <div class="form-group">
+        <label>Status</label>
+        <select name="status">
+          <c:iterate over="statuses">
+            <option lquery="(val *) (text *) (attr :selected (equal * (getf wo :|status|)))" />
+          </c:iterate>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>Progress (%)</label>
+        <input type="number" name="progress_pct" min="0" max="100" 
+               lquery="(val (or (getf wo :|progress_pct|) 0))" />
+      </div>
+      
+      <div class="form-group">
+        <label>Blocker</label>
+        <textarea name="blocker" lquery="(text (or (getf wo :|blocker|) ''))" />
+      </div>
+      
+      <div class="form-group">
+        <label>Next Action</label>
+        <textarea name="next_action" lquery="(text (or (getf wo :|next_action|) ''))" />
+      </div>
+      
+      <button type="submit" class="btn btn-primary">Update Status</button>
+    </form>
+  </section>
+  
+  <section class="card">
+    <h2>Location</h2>
+    <dl class="detail-list">
+      <dt>Site</dt>
+      <dd lquery="(text (format nil '~A (~A)' (getf wo :|site_name|) (getf wo :|site_code|)))" />
+      
+      <dt>Facility</dt>
+      <dd lquery="(text (or (getf wo :|facility_name|) '-'))" />
+      
+      <dt>Asset</dt>
+      <dd lquery="(text (or (getf wo :|asset_name|) '-'))" />
+      
+      <dt>System</dt>
+      <dd lquery="(text (or (getf wo :|system_name|) '-'))" />
+      
+      <dt>Location Details</dt>
+      <dd lquery="(text (or (getf wo :|location_details|) '-'))" />
+    </dl>
+  </section>
+  
+  <section class="card">
+    <h2>Work Details</h2>
+    <dl class="detail-list">
+      <dt>Work Type</dt>
+      <dd lquery="(text (getf wo :|work_type|))" />
+      
+      <dt>Deficiency ID</dt>
+      <dd lquery="(text (or (getf wo :|deficiency_id|) '-'))" />
+      
+      <dt>Code Basis</dt>
+      <dd lquery="(text (or (getf wo :|code_basis|) '-'))" />
+      
+      <dt>LOTO Required</dt>
+      <dd lquery="(text (if (= 1 (or (getf wo :|loto_required|) 0)) 'Yes' 'No'))" />
+      
+      <dt>Work Instructions</dt>
+      <dd lquery="(text (or (getf wo :|work_instructions|) '-'))" />
+    </dl>
+  </section>
+  
+  <section class="card">
+    <h2>Assignment & Scheduling</h2>
+    <dl class="detail-list">
+      <dt>Assigned To</dt>
+      <dd lquery="(text (or (getf wo :|assigned_to|) 'Unassigned'))" />
+      
+      <dt>Target Start</dt>
+      <dd lquery="(text (or (getf wo :|target_start|) '-'))" />
+      
+      <dt>Target Completion</dt>
+      <dd lquery="(text (or (getf wo :|target_completion|) '-'))" />
+      
+      <dt>Actual Start</dt>
+      <dd lquery="(text (or (getf wo :|actual_start|) '-'))" />
+      
+      <dt>Actual Finish</dt>
+      <dd lquery="(text (or (getf wo :|actual_finish|) '-'))" />
+    </dl>
+  </section>
+  
+  <section class="card">
+    <h2>Contract Tracking</h2>
+    <dl class="detail-list">
+      <dt>Task Order</dt>
+      <dd lquery="(text (or (getf wo :|task_order|) '-'))" />
+      
+      <dt>CLIN</dt>
+      <dd lquery="(text (or (getf wo :|clin|) '-'))" />
+      
+      <dt>BOS-I Ticket</dt>
+      <dd lquery="(text (or (getf wo :|bosi_ticket_no|) '-'))" />
+      
+      <dt>Planned Hours</dt>
+      <dd lquery="(text (or (getf wo :|planned_hours|) '-'))" />
+      
+      <dt>Actual Hours</dt>
+      <dd lquery="(text (or (getf wo :|actual_hours|) '-'))" />
+    </dl>
+  </section>
+  
+  <section class="card">
+    <h2>Materials Used</h2>
+    <c:if test="transactions">
+      <table class="data-table compact">
+        <thead>
+          <tr>
+            <th>Part #</th>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          <c:iterate over="transactions">
+            <tr>
+              <td lquery="(text part_number)" />
+              <td lquery="(text description)" />
+              <td lquery="(text qty)" />
+              <td lquery="(text (subseq created_at 0 10))" />
+            </tr>
+          </c:iterate>
+        </tbody>
+      </table>
+    </c:if>
+    <c:unless test="transactions">
+      <p class="empty-message">No materials recorded.</p>
+    </c:unless>
+  </section>
+  
+  <section class="card full-width">
+    <h2>Change History</h2>
+    <table class="data-table compact">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Field</th>
+          <th>Old Value</th>
+          <th>New Value</th>
+          <th>Changed By</th>
+        </tr>
+      </thead>
+      <tbody>
+        <c:iterate over="history">
+          <tr>
+            <td lquery="(text changed_at)" />
+            <td lquery="(text field_changed)" />
+            <td lquery="(text (or old_value '-'))" />
+            <td lquery="(text new_value)" />
+            <td lquery="(text (or changed_by '-'))" />
+          </tr>
+        </c:iterate>
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<div class="page-actions">
+  <a href="/work-orders" class="btn">Back to List</a>
+</div>

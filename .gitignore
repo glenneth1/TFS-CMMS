@@ -1,0 +1,28 @@
+# Build artifacts
+dist/
+tfs-cmms
+tfs-cmms-*.tar.gz
+
+# Database
+data/*.db
+
+# Common Lisp cache
+*.fasl
+*.fas
+*.lib
+*.o
+
+# Editor backups
+*~
+\#*\#
+.#*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

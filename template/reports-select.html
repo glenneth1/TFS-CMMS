@@ -1,0 +1,31 @@
+<c:using value="'Reports'" as="title">
+  <c:include template="base.html" />
+</c:using>
+
+<div class="page-header">
+  <h1>Weekly Reports</h1>
+</div>
+
+<div class="card">
+  <h2>Generate Weekly Report</h2>
+  <p>Select a site to generate the weekly CMMS status report as required by PWS Section 17.0.</p>
+  
+  <form method="get" action="/reports" class="inline-form">
+    <div class="form-group">
+      <label>Site</label>
+      <select name="site" required>
+        <option value="">Select Site...</option>
+        <c:iterate over="sites">
+          <option lquery="(val id) (text (format nil '~A - ~A' code name))" />
+        </c:iterate>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Generate Report</button>
+  </form>
+</div>
+
+<c:when test="(null sites)">
+  <div class="empty-state">
+    <p>No sites configured. <a href="/sites">Add sites first</a>.</p>
+  </div>
+</c:when>

@@ -1,0 +1,139 @@
+<c:using value="'New Work Order'" as="title">
+  <c:include template="base.html" />
+</c:using>
+
+<div class="page-header">
+  <h1>Create New Work Order</h1>
+</div>
+
+<form method="post" action="/api/work-orders/create" class="form-card">
+  <div class="form-section">
+    <h2>Location</h2>
+    <div class="form-row">
+      <div class="form-group required">
+        <label>Site</label>
+        <select name="site_id" required id="site-select">
+          <option value="">Select Site...</option>
+          <c:iterate over="sites">
+            <option lquery="(val id) (text (format nil '~A - ~A' code name))" />
+          </c:iterate>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>Facility</label>
+        <select name="facility_id" id="facility-select">
+          <option value="">Select Facility...</option>
+          <c:iterate over="facilities">
+            <option lquery="(val id) (text (format nil '~A - ~A' facility_code name)) 
+                           (attr :data-site site_id)" />
+          </c:iterate>
+        </select>
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label>Location Details</label>
+      <input type="text" name="location_details" placeholder="Room, bay, panel reference..." />
+    </div>
+  </div>
+  
+  <div class="form-section">
+    <h2>Work Classification</h2>
+    <div class="form-row">
+      <div class="form-group required">
+        <label>Work Type</label>
+        <select name="work_type" required>
+          <c:iterate over="work-types">
+            <option lquery="(val *) (text *)" />
+          </c:iterate>
+        </select>
+      </div>
+      
+      <div class="form-group required">
+        <label>Priority</label>
+        <select name="priority" required>
+          <c:iterate over="priorities">
+            <option lquery="(val *) (text *)" />
+          </c:iterate>
+        </select>
+      </div>
+    </div>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>Deficiency ID (Master Tracker)</label>
+        <input type="text" name="deficiency_id" placeholder="TFS-XXX-XXXX" />
+      </div>
+      
+      <div class="form-group">
+        <label>Code Basis</label>
+        <select name="code_basis">
+          <option value="">Select...</option>
+          <option value="NEC 2020">NEC 2020 (60Hz)</option>
+          <option value="BS 7671">BS 7671 18th Ed (50Hz)</option>
+          <option value="MEW Kuwait">MEW Kuwait S-1</option>
+          <option value="UFC 3-501">UFC 3-501</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  
+  <div class="form-section">
+    <h2>Contract Tracking</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Task Order</label>
+        <input type="text" name="task_order" />
+      </div>
+      
+      <div class="form-group">
+        <label>CLIN</label>
+        <input type="text" name="clin" />
+      </div>
+    </div>
+  </div>
+  
+  <div class="form-section">
+    <h2>Planning</h2>
+    <div class="form-group">
+      <label>Work Instructions</label>
+      <textarea name="work_instructions" rows="4" 
+                placeholder="Describe the work to be performed..."></textarea>
+    </div>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>Target Completion Date</label>
+        <input type="date" name="target_completion" />
+      </div>
+      
+      <div class="form-group">
+        <label>Planned Hours</label>
+        <input type="number" name="planned_hours" step="0.5" min="0" />
+      </div>
+    </div>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>Assigned To</label>
+        <input type="text" name="assigned_to" placeholder="Team or technician name" />
+      </div>
+      
+      <div class="form-group">
+        <label>Job Plan Template</label>
+        <select name="job_plan_id">
+          <option value="">None</option>
+          <c:iterate over="job-plans">
+            <option lquery="(val id) (text name)" />
+          </c:iterate>
+        </select>
+      </div>
+    </div>
+  </div>
+  
+  <div class="form-actions">
+    <a href="/work-orders" class="btn">Cancel</a>
+    <button type="submit" class="btn btn-primary">Create Work Order</button>
+  </div>
+</form>

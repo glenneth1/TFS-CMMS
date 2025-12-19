@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TF SAFE CMMS - <c:splice lquery="(text title)" /></title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">
+      <a href="/">TF SAFE CMMS</a>
+    </div>
+    <ul class="nav-links">
+      <li><a href="/work-orders">Work Orders</a></li>
+      <li><a href="/sites">Sites</a></li>
+      <li><a href="/inventory">Inventory</a></li>
+      <li><a href="/reports">Reports</a></li>
+    </ul>
+  </nav>
+  
+  <main class="container">
+    <c:splice lquery="(html content)" />
+  </main>
+  
+  <footer class="footer">
+    <p>Task Force SAFE - Computerized Maintenance Management System</p>
+  </footer>
+  
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

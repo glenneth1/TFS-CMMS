@@ -1,0 +1,52 @@
+<c:using value="'Sites'" as="title">
+  <c:include template="base.html" />
+</c:using>
+
+<div class="page-header">
+  <h1>Sites</h1>
+</div>
+
+<div class="card">
+  <h2>Add New Site</h2>
+  <form method="post" action="/api/sites/create" class="inline-form">
+    <div class="form-group">
+      <label>Code</label>
+      <input type="text" name="code" required placeholder="AJ" maxlength="10" />
+    </div>
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" name="name" required placeholder="Al Jaber Air Base" />
+    </div>
+    <button type="submit" class="btn btn-primary">Add Site</button>
+  </form>
+</div>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Code</th>
+      <th>Name</th>
+      <th>Created</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <c:iterate over="sites">
+      <tr>
+        <td lquery="(text code)" />
+        <td lquery="(text name)" />
+        <td lquery="(text (subseq created_at 0 10))" />
+        <td>
+          <a lquery="(attr :href (format nil '/work-orders?site=~A' id))" class="btn btn-sm">View WOs</a>
+          <a lquery="(attr :href (format nil '/reports?site=~A' id))" class="btn btn-sm">Report</a>
+        </td>
+      </tr>
+    </c:iterate>
+  </tbody>
+</table>
+
+<c:when test="(null sites)">
+  <div class="empty-state">
+    <p>No sites configured yet. Add your first site above.</p>
+  </div>
+</c:when>

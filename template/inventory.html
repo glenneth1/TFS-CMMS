@@ -1,0 +1,82 @@
+<c:using value="'Inventory'" as="title">
+  <c:include template="base.html" />
+</c:using>
+
+<div class="page-header">
+  <h1>Inventory</h1>
+</div>
+
+<div class="filters">
+  <form method="get" action="/inventory" class="filter-form">
+    <label>
+      Site:
+      <select name="site" onchange="this.form.submit()">
+        <option value="">Select Site...</option>
+        <c:iterate over="sites">
+          <option lquery="(val id) (text (format nil '~A - ~A' code name)) 
+                         (attr :selected (equal id selected-site))" />
+        </c:iterate>
+      </select>
+    </label>
+  </form>
+</div>
+
+<c:when test="selected-site">
+  <c:when test="low-stock">
+    <div class="alert alert-warning">
+      <h3>Low Stock Alerts</h3>
+      <ul>
+        <c:iterate over="low-stock">
+          <li>
+            <strong lquery="(text part_number)" />: 
+            <span lquery="(text qty_on_hand)" /> on hand 
+            (min: <span lquery="(text min_qty)" />)
+          </li>
+        </c:iterate>
+      </ul>
+    </div>
+  </c:when>
+  
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Part Number</th>
+        <th>Description</th>
+        <th>UoM</th>
+        <th>On Hand</th>
+        <th>Min Qty</th>
+        <th>Ideal Qty</th>
+        <th>Reorder?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <c:iterate over="inventory">
+        <tr lquery="(add-class (when (= 1 reorder_flag) 'alert-row'))">
+          <td lquery="(text part_number)" />
+          <td lquery="(text description)" />
+          <td lquery="(text uom)" />
+          <td lquery="(text qty_on_hand)" />
+          <td lquery="(text min_qty)" />
+          <td lquery="(text ideal_qty)" />
+          <td>
+            <c:when test="(= 1 reorder_flag)">
+              <span class="badge badge-warning">REORDER</span>
+            </c:when>
+          </td>
+        </tr>
+      </c:iterate>
+    </tbody>
+  </table>
+  
+  <c:when test="(null inventory)">
+    <div class="empty-state">
+      <p>No inventory items configured for this site.</p>
+    </div>
+  </c:when>
+</c:when>
+
+<c:unless test="selected-site">
+  <div class="empty-state">
+    <p>Select a site to view inventory.</p>
+  </div>
+</c:unless>

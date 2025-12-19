@@ -1,0 +1,76 @@
+<c:using value="'Work Orders'" as="title">
+  <c:include template="base.html" />
+</c:using>
+
+<div class="page-header">
+  <h1>Work Orders</h1>
+  <a href="/work-orders/new" class="btn btn-primary">+ New Work Order</a>
+</div>
+
+<div class="filters">
+  <form method="get" action="/work-orders" class="filter-form">
+    <label>
+      Site:
+      <select name="site">
+        <option value="">All Sites</option>
+        <c:iterate over="sites">
+          <option lquery="(val id) (text (format nil '~A - ~A' code name)) 
+                         (attr :selected (equal id selected-site))" />
+        </c:iterate>
+      </select>
+    </label>
+    <label>
+      Status:
+      <select name="status">
+        <option value="">All Statuses</option>
+        <c:iterate over="statuses">
+          <option lquery="(val *) (text *) (attr :selected (equal * selected-status))" />
+        </c:iterate>
+      </select>
+    </label>
+    <button type="submit" class="btn">Filter</button>
+  </form>
+</div>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>WO Number</th>
+      <th>Site</th>
+      <th>Facility</th>
+      <th>Priority</th>
+      <th>Status</th>
+      <th>Progress</th>
+      <th>Created</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <c:iterate over="work-orders">
+      <tr lquery="(add-class (format nil 'priority-~A' (string-downcase priority)))">
+        <td><a lquery="(attr :href (format nil '/work-orders/~A' id)) (text wo_number)" /></td>
+        <td lquery="(text site_code)" />
+        <td lquery="(text (or facility_code '-'))" />
+        <td><span class="badge" lquery="(text priority) (add-class (format nil 'badge-~A' (string-downcase priority)))" /></td>
+        <td><span class="status-badge" lquery="(text status)" /></td>
+        <td>
+          <div class="progress-bar">
+            <div class="progress-fill" lquery="(attr :style (format nil 'width: ~A%' (or progress_pct 0)))" />
+          </div>
+          <span lquery="(text (format nil '~A%' (or progress_pct 0)))" />
+        </td>
+        <td lquery="(text (subseq created_at 0 10))" />
+        <td>
+          <a lquery="(attr :href (format nil '/work-orders/~A' id))" class="btn btn-sm">View</a>
+        </td>
+      </tr>
+    </c:iterate>
+  </tbody>
+</table>
+
+<c:when test="(null work-orders)">
+  <div class="empty-state">
+    <p>No work orders found.</p>
+    <a href="/work-orders/new" class="btn btn-primary">Create First Work Order</a>
+  </div>
+</c:when>

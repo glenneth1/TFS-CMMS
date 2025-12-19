@@ -1,0 +1,199 @@
+<c:using value="(format nil 'Weekly Report - ~A' (getf report :site-code))" as="title">
+  <c:include template="base.html" />
+</c:using>
+
+<div class="page-header">
+  <h1>Weekly CMMS Status Report</h1>
+  <button onclick="window.print()" class="btn">Print Report</button>
+</div>
+
+<div class="report-header">
+  <div class="report-meta">
+    <p><strong>Site:</strong> <span lquery="(text (format nil '~A (~A)' (getf report :site-name) (getf report :site-code)))" /></p>
+    <p><strong>Report Date:</strong> <span lquery="(text (getf report :report-date))" /></p>
+    <p><strong>Generated From:</strong> TF SAFE CMMS (Internal System)</p>
+  </div>
+</div>
+
+<section class="report-section">
+  <h2>1. Executive Summary</h2>
+  <div class="summary-grid">
+    <div class="summary-card">
+      <span class="summary-value" lquery="(text (getf (getf report :summary) :total-open))" />
+      <span class="summary-label">Total Open WOs</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-value" lquery="(text (getf (getf report :summary) :opened-this-week))" />
+      <span class="summary-label">Opened This Week</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-value" lquery="(text (getf (getf report :summary) :closed-this-week))" />
+      <span class="summary-label">Closed This Week</span>
+    </div>
+  </div>
+  
+  <h3>Aging Analysis</h3>
+  <table class="data-table compact">
+    <thead>
+      <tr>
+        <th>0-7 Days</th>
+        <th>8-30 Days</th>
+        <th>31-60 Days</th>
+        <th>60+ Days</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td lquery="(text (getf (getf (getf report :summary) :aging) :days-0-7))" />
+        <td lquery="(text (getf (getf (getf report :summary) :aging) :days-8-30))" />
+        <td lquery="(text (getf (getf (getf report :summary) :aging) :days-31-60))" />
+        <td lquery="(text (getf (getf (getf report :summary) :aging) :days-60-plus))" />
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="report-section">
+  <h2>2. Status Breakdown</h2>
+  <table class="data-table compact">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Count</th>
+      </tr>
+    </thead>
+    <tbody>
+      <c:iterate over="(getf report :status-breakdown)">
+        <tr>
+          <td lquery="(text (getf * :|status|))" />
+          <td lquery="(text (getf * :|count|))" />
+        </tr>
+      </c:iterate>
+    </tbody>
+  </table>
+</section>
+
+<section class="report-section">
+  <h2>3. Open Work Orders</h2>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>WO #</th>
+        <th>Deficiency ID</th>
+        <th>Facility</th>
+        <th>Priority</th>
+        <th>Status</th>
+        <th>Progress</th>
+        <th>Age</th>
+        <th>Blocker</th>
+        <th>Next Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <c:iterate over="(getf report :open-work-orders)">
+        <tr>
+          <td lquery="(text (getf * :|wo_number|))" />
+          <td lquery="(text (or (getf * :|deficiency_id|) '-'))" />
+          <td lquery="(text (or (getf * :|facility_code|) '-'))" />
+          <td><span class="badge" lquery="(text (getf * :|priority|))" /></td>
+          <td lquery="(text (getf * :|status|))" />
+          <td lquery="(text (format nil '~A%' (or (getf * :|progress_pct|) 0)))" />
+          <td lquery="(text (format nil '~Ad' (or (getf * :|age_days|) 0)))" />
+          <td lquery="(text (or (getf * :|blocker|) '-'))" />
+          <td lquery="(text (or (getf * :|next_action|) '-'))" />
+        </tr>
+      </c:iterate>
+    </tbody>
+  </table>
+</section>
+
+<section class="report-section">
+  <h2>4. Inventory - Issued This Week</h2>
+  <c:if test="(getf (getf report :inventory) :issued-this-week)">
+    <table class="data-table compact">
+      <thead>
+        <tr>
+          <th>Part #</th>
+          <th>Description</th>
+          <th>Qty Issued</th>
+          <th>UoM</th>
+        </tr>
+      </thead>
+      <tbody>
+        <c:iterate over="(getf (getf report :inventory) :issued-this-week)">
+          <tr>
+            <td lquery="(text (getf * :|part_number|))" />
+            <td lquery="(text (getf * :|description|))" />
+            <td lquery="(text (getf * :|qty_issued|))" />
+            <td lquery="(text (getf * :|uom|))" />
+          </tr>
+        </c:iterate>
+      </tbody>
+    </table>
+  </c:if>
+  <c:unless test="(getf (getf report :inventory) :issued-this-week)">
+    <p class="empty-message">No materials issued this week.</p>
+  </c:unless>
+</section>
+
+<section class="report-section">
+  <h2>5. Low Stock Alerts</h2>
+  <c:if test="(getf (getf report :inventory) :low-stock)">
+    <table class="data-table compact">
+      <thead>
+        <tr>
+          <th>Part #</th>
+          <th>Description</th>
+          <th>On Hand</th>
+          <th>Min Qty</th>
+        </tr>
+      </thead>
+      <tbody>
+        <c:iterate over="(getf (getf report :inventory) :low-stock)">
+          <tr class="alert-row">
+            <td lquery="(text (getf * :|part_number|))" />
+            <td lquery="(text (getf * :|description|))" />
+            <td lquery="(text (getf * :|qty_on_hand|))" />
+            <td lquery="(text (getf * :|min_qty|))" />
+          </tr>
+        </c:iterate>
+      </tbody>
+    </table>
+  </c:if>
+  <c:unless test="(getf (getf report :inventory) :low-stock)">
+    <p class="empty-message">No items below minimum stock level.</p>
+  </c:unless>
+</section>
+
+<section class="report-section">
+  <h2>6. CLIN & Capacity Tracking</h2>
+  <c:if test="(getf report :clin-summary)">
+    <table class="data-table compact">
+      <thead>
+        <tr>
+          <th>CLIN</th>
+          <th>WO Count</th>
+          <th>Total Hours</th>
+          <th>Total Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <c:iterate over="(getf report :clin-summary)">
+          <tr>
+            <td lquery="(text (getf * :|clin|))" />
+            <td lquery="(text (getf * :|wo_count|))" />
+            <td lquery="(text (or (getf * :|total_hours|) 0))" />
+            <td lquery="(text (format nil '$~,2F' (or (getf * :|total_cost|) 0)))" />
+          </tr>
+        </c:iterate>
+      </tbody>
+    </table>
+  </c:if>
+  <c:unless test="(getf report :clin-summary)">
+    <p class="empty-message">No CLIN data recorded.</p>
+  </c:unless>
+</section>
+
+<div class="page-actions no-print">
+  <a href="/reports" class="btn">Back to Reports</a>
+</div>
