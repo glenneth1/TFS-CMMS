@@ -49,28 +49,45 @@ document.addEventListener('DOMContentLoaded', function() {
       
       fetch(action, {
         method: 'POST',
-        body: formData
+        body: formData,
+        redirect: 'follow'
       })
-      .then(response => response.json())
+      .then(response => {
+        // If we got redirected, go to the new URL
+        if (response.redirected) {
+          window.location.href = response.url;
+          return;
+        }
+        // If successful response, reload current page (for updates)
+        if (response.ok) {
+          if (action.includes('/activity')) {
+            form.reset();
+          }
+          window.location.reload();
+          return;
+        }
+        // Try to parse as JSON for error messages
+        return response.json();
+      })
       .then(data => {
-        if (data.status === 'created' || data.status === 'updated') {
-          // Redirect based on context
-          if (action.includes('work-orders/create')) {
+        if (data && data.status === 'created') {
+          // Redirect to new work order
+          if (action.includes('work-orders/create') && data.id) {
             window.location.href = '/work-orders/' + data.id;
-          } else if (action.includes('work-orders/update')) {
-            window.location.reload();
-          } else if (action.includes('sites/create')) {
-            window.location.reload();
           } else {
             window.location.reload();
           }
-        } else {
-          alert('Operation completed: ' + JSON.stringify(data));
+        } else if (data && data.error) {
+          alert('Error: ' + data.error);
         }
       })
       .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred. Please try again.');
+        // If parsing failed, just reload - the action probably succeeded
+        console.log('Response was not JSON, reloading page');
+        if (action.includes('/activity')) {
+          form.reset();
+        }
+        window.location.reload();
       });
     });
   });

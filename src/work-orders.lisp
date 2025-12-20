@@ -202,3 +202,72 @@
       AND wo.status = 'Closed'
       AND wo.updated_at >= datetime('now', '-7 days')
     ORDER BY wo.updated_at DESC" site-id))
+
+;;; Work Order Activities (Re-inspections, Call-outs, etc.)
+
+(defun add-wo-activity (wo-id activity-type activity-date &key description performed-by notes)
+  "Add an activity entry to a work order's history."
+  (execute-sql 
+   "INSERT INTO wo_activities (wo_id, activity_type, activity_date, description, performed_by, notes)
+    VALUES (?, ?, ?, ?, ?, ?)"
+   wo-id activity-type activity-date description performed-by notes))
+
+(defun get-wo-activities (wo-id)
+  "Get all activities for a work order, ordered by date."
+  (fetch-all 
+   "SELECT * FROM wo_activities WHERE wo_id = ? ORDER BY activity_date DESC, created_at DESC" 
+   wo-id))
+
+(defun delete-wo-activity (activity-id)
+  "Delete an activity entry."
+  (execute-sql "DELETE FROM wo_activities WHERE id = ?" activity-id))
+
+;;; Search Functions
+
+(defun search-work-orders (search-term &key site-id limit)
+  "Search work orders by WO number or location details."
+  (let ((like-term (format nil "%~A%" search-term)))
+    (if site-id
+        (fetch-all 
+         (format nil
+          "SELECT wo.*, s.code as site_code, s.name as site_name, f.code as facility_code
+           FROM work_orders wo
+           JOIN sites s ON wo.site_id = s.id
+           LEFT JOIN facilities f ON wo.facility_id = f.id
+           WHERE wo.site_id = ?
+             AND (wo.wo_number LIKE ? 
+                  OR wo.location_details LIKE ?
+                  OR wo.work_type LIKE ?
+                  OR wo.assigned_to LIKE ?)
+           ORDER BY wo.created_at DESC
+           ~@[LIMIT ~A~]" limit)
+         site-id like-term like-term like-term like-term)
+        (fetch-all 
+         (format nil
+          "SELECT wo.*, s.code as site_code, s.name as site_name, f.code as facility_code
+           FROM work_orders wo
+           JOIN sites s ON wo.site_id = s.id
+           LEFT JOIN facilities f ON wo.facility_id = f.id
+           WHERE wo.wo_number LIKE ? 
+                 OR wo.location_details LIKE ?
+                 OR wo.work_type LIKE ?
+                 OR wo.assigned_to LIKE ?
+           ORDER BY wo.created_at DESC
+           ~@[LIMIT ~A~]" limit)
+         like-term like-term like-term like-term))))
+
+(defun search-wo-activities (search-term &key limit)
+  "Search work order activities by WO number."
+  (let ((like-term (format nil "%~A%" search-term)))
+    (fetch-all 
+     (format nil
+      "SELECT a.*, wo.wo_number, wo.location_details,
+              s.code as site_code, s.name as site_name
+       FROM wo_activities a
+       JOIN work_orders wo ON a.wo_id = wo.id
+       JOIN sites s ON wo.site_id = s.id
+       WHERE wo.wo_number LIKE ?
+             OR wo.location_details LIKE ?
+       ORDER BY a.activity_date DESC
+       ~@[LIMIT ~A~]" limit)
+     like-term like-term)))

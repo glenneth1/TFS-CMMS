@@ -10,6 +10,14 @@
   (merge-pathnames "data/tfs-cmms.db" (get-app-directory))
   "Path to the SQLite database file.")
 
+(defvar *uploads-directory*
+  (merge-pathnames "data/uploads/" (get-app-directory))
+  "Directory for uploaded files.")
+
+(defvar *base-directory*
+  (get-app-directory)
+  "Base directory for the application.")
+
 (defvar *server-port* 8080
   "Port for the web server.")
 
@@ -34,6 +42,88 @@
   '("LSAU" "LSA" "ACCOMM" "BDOC" "TOC" "OFFICE" "HALLWAY" "CORRIDOR" 
     "MWR" "COMMON AREA" "GENERATOR" "MTS" "MDP" "SDP" "CDP")
   "Building/facility types for inspections.")
+
+(defvar *activity-types*
+  '("Initial Inspection" "Re-inspection" "Call-out" "Corrective Action" 
+    "Follow-up" "Parts Delivery" "QAQC Review" "Final Sign-off")
+  "Types of activities that can be logged against a work order.")
+
+;;; Inspection Report Configuration
+
+(defvar *inspection-phases*
+  '("Initial Inspection" "Re Inspection" "Final Inspection")
+  "Phases of inspection for reports.")
+
+(defvar *system-voltages*
+  '(("120/208" . "60Hz") ("277/480" . "60Hz") ("230/400" . "50Hz") ("120/240" . "60Hz"))
+  "System voltages with their frequency (determines NEC vs BS7671).")
+
+(defvar *overall-ratings*
+  '("Good" "Fair" "Poor")
+  "Overall building electrical system ratings.")
+
+(defvar *deficiency-categories*
+  '("Grounding and Bonding" "Improper Terminations" "Improper Use / Damaged" 
+    "Poor Workmanship" "Unlisted Equipment")
+  "Categories of electrical deficiencies.")
+
+(defvar *equipment-categories*
+  '("WLT" "MTS" "MDP" "SDP" "CDP" "GEN" "HVAC" "LTG" "RCP" "SWT" "PNL" "CBL" "CON" "GND")
+  "Equipment category codes.")
+
+(defvar *sor-issued-to*
+  '("Task Force SAFE" "O&M Provider" "Military")
+  "Parties to whom SOR can be issued.")
+
+(defvar *deficiency-statuses*
+  '("Open" "ReInsp-Open" "Closed / Repaired" "Closed Previously" "Mitigated" "N/A")
+  "Status options for deficiencies.")
+
+(defvar *report-statuses*
+  '("Draft" "Pending QC" "QC Rejected" "QC Approved" "Complete")
+  "Status workflow for inspection reports.")
+
+(defvar *nec-code-references*
+  '("110: General Rules"
+    "200: Use and Identification of Grounded Conductors"
+    "210: Branch Circuits"
+    "230: Services"
+    "240: Overcurrent Protection"
+    "250: Grounding/Bonding"
+    "300: General Requirements for Wiring Methods and Materials"
+    "310: Conductors for General Wiring"
+    "400: Flexible Cords and Cables"
+    "404: Switches"
+    "406: Receptacles, Cord Connectors and Attachment Plugs"
+    "408: Switchboards, Switchgear, and Panelboards"
+    "410: Luminaires, Lampholders, and Lamps"
+    "440: Air-Conditioning and Refrigerating Equipment"
+    "445: Generators")
+  "NEC code references for 60Hz systems.")
+
+(defvar *bs7671-code-references*
+  '("132: Protection against electric shock"
+    "411: Protection against fire caused by electrical equipment"
+    "510: Common rules"
+    "511: Compliance with standards"
+    "514: Identification and notices"
+    "521: Types of wiring systems"
+    "522: Selection and erection of wiring systems in relation to external influences"
+    "526: Electrical connections"
+    "542: Earthing arrangements"
+    "642: Inspection"
+    "701: Locations containing a bath or a shower"
+    "Appx 4: Current carrying capacities and voltage drop for cables")
+  "BS7671 code references for 50Hz systems.")
+
+;;; User Roles and Authentication
+
+(defvar *user-roles*
+  '("Inspector" "QC" "Admin")
+  "Available user roles.")
+
+(defvar *session-duration-hours* 24
+  "Session duration in hours before expiry.")
 
 (defvar *default-sites*
   '(("H4QXY" "Camp Arifjan" "Kuwait")

@@ -109,10 +109,10 @@ body {
   display: inline-flex;
   align-items: center;
   padding: 0.5rem 1rem;
-  border: 1px solid var(--gray-300);
+  border: 1px solid var(--primary);
   border-radius: 6px;
-  background: white;
-  color: var(--gray-700);
+  background: var(--primary);
+  color: white;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -121,8 +121,8 @@ body {
 }
 
 .btn:hover {
-  background: var(--gray-50);
-  border-color: var(--gray-400);
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
 }
 
 .btn-primary {
@@ -135,9 +135,34 @@ body {
   background: var(--primary-dark);
 }
 
+.btn-danger {
+  background: #dc3545;
+  border-color: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+  border-color: #c82333;
+}
+
+.btn-success {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #059669;
+  border-color: #059669;
+}
+
 .btn-sm {
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
+  min-width: 60px;
+  text-align: center;
+  display: inline-block;
 }
 
 /* Cards */
@@ -350,12 +375,12 @@ body {
   font-size: 0.875rem;
 }
 
-.data-table a {
+.data-table a:not(.btn) {
   color: var(--primary);
   text-decoration: none;
 }
 
-.data-table a:hover {
+.data-table a:not(.btn):hover {
   text-decoration: underline;
 }
 
@@ -601,4 +626,427 @@ body {
   .data-table td {
     padding: 0.5rem;
   }
+}
+
+/* Activity Section */
+.activity-section {
+  grid-column: 1 / -1;
+}
+
+.activity-form {
+  background: var(--gray-100);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.activity-form .form-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.activity-form .form-group {
+  flex: 1;
+  min-width: 150px;
+}
+
+.activity-table {
+  margin-top: 1rem;
+}
+
+.help-text {
+  color: var(--gray-600);
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+/* Search input in filter form */
+.filter-form input[type="text"] {
+  padding: 0.5rem;
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+}
+
+/* Danger button for delete actions */
+.btn-danger {
+  background: #dc3545;
+  color: white;
+  border: none;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+}
+
+/* RAC Score badges */
+.rac-1 {
+  background: #dc3545;
+  color: white;
+}
+
+.rac-2 {
+  background: #fd7e14;
+  color: white;
+}
+
+.rac-3 {
+  background: #ffc107;
+  color: #333;
+}
+
+.rac-4 {
+  background: #28a745;
+  color: white;
+}
+
+/* Alert styles */
+.alert {
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.alert-danger {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+}
+
+.alert-success {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+}
+
+/* Form actions */
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+/* Required field indicator */
+.form-group.required label::after {
+  content: " *";
+  color: #dc3545;
+}
+
+/* Deficiency thumbnails */
+.deficiency-thumbnail {
+  max-width: 100px;
+  max-height: 75px;
+  margin-top: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--gray-300);
+  cursor: pointer;
+}
+
+.deficiency-thumbnail:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* File input styling */
+input[type="file"] {
+  padding: 0.5rem;
+  border: 1px dashed var(--gray-300);
+  border-radius: 6px;
+  width: 100%;
+  background: var(--gray-100);
+}
+
+/* Login page styles */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--primary) 0%, #1a365d 100%);
+}
+
+.login-container {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.login-logo {
+  width: 80px;
+  height: auto;
+  margin-bottom: 1rem;
+}
+
+.login-header h1 {
+  margin: 0;
+  color: var(--primary);
+}
+
+.login-header p {
+  color: var(--gray-500);
+  margin-top: 0.5rem;
+}
+
+.login-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.login-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.login-form input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.btn-block {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1rem;
+}
+
+/* User info in navbar */
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: white;
+}
+
+.nav-user .user-name {
+  font-weight: 500;
+}
+
+.nav-user .user-role {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.nav-user .btn-logout {
+  background: rgba(255,255,255,0.2);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.nav-user .btn-logout:hover {
+  background: rgba(255,255,255,0.3);
+}
+
+/* Notification badge */
+.notification-badge {
+  background: #dc3545;
+  color: white;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  margin-left: 0.25rem;
+}
+
+/* Dashboard styles */
+.dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.stat-card h3 {
+  margin: 0;
+  color: var(--gray-500);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.stat-number {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: var(--primary);
+  margin: 0.5rem 0 0;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.alert-card {
+  border-left: 4px solid #dc3545;
+}
+
+.badge-danger {
+  background: #dc3545;
+}
+
+/* Admin panel styles */
+.user-table .role-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.role-badge.admin { background: #6f42c1; color: white; }
+.role-badge.qc { background: #17a2b8; color: white; }
+.role-badge.inspector { background: #28a745; color: white; }
+
+.status-active { color: #28a745; }
+.status-inactive { color: #dc3545; }
+
+/* Building image styles */
+.building-image-container {
+  max-width: 400px;
+}
+
+.building-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--gray-300);
+}
+
+.text-muted {
+  color: var(--gray-500);
+  font-style: italic;
+}
+
+/* Alert styles */
+.alert {
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.alert-danger {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+}
+
+.rejection-count {
+  font-weight: normal;
+  color: #856404;
+  background: #fff3cd;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.rejection-badge {
+  display: inline-block;
+  background: #dc3545;
+  color: white;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* Filter Bar */
+.filter-bar {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--gray-50);
+  border-radius: 8px;
+}
+
+.filter-form {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.filter-form label {
+  font-weight: 500;
+  color: var(--gray-700);
+}
+
+.filter-form select {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  min-width: 200px;
+  cursor: pointer;
+}
+
+/* Notifications */
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.notification-item {
+  padding: 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  background: var(--gray-50);
+}
+
+.notification-item.unread {
+  background: #fff3cd;
+  border-color: #ffc107;
+}
+
+.notification-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--gray-900);
+}
+
+.notification-message {
+  color: var(--gray-600);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.notification-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* QC Assignment */
+.assign-form {
+  display: inline;
+}
+
+.assign-form select {
+  padding: 0.3rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  min-width: 150px;
+}
+
+.nav-admin a {
+  color: #ffc107 !important;
+  font-weight: 500;
 }

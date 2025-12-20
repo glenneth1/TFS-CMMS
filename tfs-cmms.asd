@@ -11,13 +11,16 @@
                #:local-time
                #:alexandria
                #:cl-json
-               #:cl-ppcre)
+               #:cl-ppcre
+               #:ironclad)
   :components ((:module "src"
                 :components ((:file "package")
                              (:file "config")
                              (:file "database")
                              (:file "models")
                              (:file "work-orders")
+                             (:file "inspection-reports")
+                             (:file "auth")
                              (:file "inventory")
                              (:file "reports")
                              (:file "routes")))))
