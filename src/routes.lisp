@@ -82,6 +82,7 @@
           (:li (:a :href "/inventory" "Inventory"))
           (:li (:a :href "/mrf" "MRF"))
           (:li (:a :href "/rr" "R&R"))
+          (:li (:a :href "/master-tracker" "Master Tracker"))
           (:li (:a :href "/reports" "Reports"))
           (when (and user (user-is-admin-p user))
             (cl-who:htm
