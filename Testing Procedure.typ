@@ -908,6 +908,180 @@ Use this checklist to record test results:
 
 #pagebreak()
 
+= Daily Activity Report (DAR) Tests
+
+== Test DAR-1: Create New DAR
+
+*Objective:* Verify electricians can create a Daily Activity Report.
+
+*Prerequisites:*
+- Logged in as Electrician role
+- DAR link visible in navigation
+
+*Steps:*
++ Navigate to *DAR* page
++ Click *New DAR*
++ Fill in report details (date, team number, names, location)
++ Complete safety section (toolbox topic, safety brief, HECP)
++ Add activity record using time dropdown (select 08:00)
++ Enter activity description "TEAM MEETING"
++ Click *+ Add Activity* to add another row
++ Select time 12:00, enter "LUNCH"
++ Add a report submitted (enter TAG ID, select Yes)
++ Click *Submit DAR*
+
+*Expected Results:*
+- DAR is created and saved
+- Redirected to DAR detail view
+- All entered data is displayed correctly
+- Activities show in chronological order
+
+#block(
+  stroke: 0.5pt,
+  inset: 8pt,
+  width: 100%,
+)[
+  *Result:* #box(width: 50pt, stroke: (bottom: 0.5pt)) Pass / Fail
+  
+  *Notes:* #box(width: 300pt, stroke: (bottom: 0.5pt))
+]
+
+== Test DAR-2: Download DAR PDF
+
+*Objective:* Verify DAR PDF generation with correct naming convention.
+
+*Prerequisites:*
+- At least one DAR exists in the system
+
+*Steps:*
++ Navigate to *DAR* list
++ Click *View* on a DAR
++ Click *Download PDF*
+
+*Expected Results:*
+- PDF downloads successfully
+- Filename follows convention: `DAR_SITE_DATE_TEAM.pdf`
+- PDF contains all DAR data including activities and reports submitted
+
+#block(
+  stroke: 0.5pt,
+  inset: 8pt,
+  width: 100%,
+)[
+  *Result:* #box(width: 50pt, stroke: (bottom: 0.5pt)) Pass / Fail
+  
+  *Notes:* #box(width: 300pt, stroke: (bottom: 0.5pt))
+]
+
+== Test DAR-3: DAR Access Control
+
+*Objective:* Verify role-based access to DARs.
+
+*Steps:*
++ Log in as Electrician — verify can only see own team's DARs
++ Log in as Master Electrician — verify can see all DARs
++ Log in as Admin — verify full access to all DARs
+
+*Expected Results:*
+- Access restrictions enforced per role
+
+#block(
+  stroke: 0.5pt,
+  inset: 8pt,
+  width: 100%,
+)[
+  *Result:* #box(width: 50pt, stroke: (bottom: 0.5pt)) Pass / Fail
+]
+
+#pagebreak()
+
+= Immediate Repair Package (IRP) Tests
+
+== Test IRP-1: Create New IRP Submission
+
+*Objective:* Verify electricians can submit IRP inventory counts.
+
+*Prerequisites:*
+- Logged in as Electrician role
+
+*Steps:*
++ Navigate to *IRP* page
++ Click *New IRP*
++ Fill in submission details (date, team, location)
++ Review standard items list (37 items)
++ Enter issued and current quantities for several items
++ Enter a discrepancy (issued ≠ current) for at least one item
++ Click *Submit IRP*
+
+*Expected Results:*
+- IRP submission is created
+- Redirected to IRP detail view
+- Discrepancy items highlighted in yellow
+
+#block(
+  stroke: 0.5pt,
+  inset: 8pt,
+  width: 100%,
+)[
+  *Result:* #box(width: 50pt, stroke: (bottom: 0.5pt)) Pass / Fail
+]
+
+#pagebreak()
+
+= Site Activity Report (SAR) Tests
+
+== Test SAR-1: Generate SAR PDF
+
+*Objective:* Verify consolidated SAR PDF generation.
+
+*Prerequisites:*
+- Logged in as Admin, AO Lead, or Program Manager
+- Inspection reports exist for the selected date
+
+*Steps:*
++ Navigate to *SAR* page
++ Select a date with inspection activity
++ Click *Generate SAR PDF*
+
+*Expected Results:*
+- PDF downloads with naming: `DAR_ALL_SITES_DD-MMM-YY.pdf`
+- PDF contains one page per active site
+- Army logo (top left) and TFS logo (top right) on each page
+- Table shows all inspection reports for that date
+- Reports Submitted column shows YES (green) or NO (red)
+
+#block(
+  stroke: 0.5pt,
+  inset: 8pt,
+  width: 100%,
+)[
+  *Result:* #box(width: 50pt, stroke: (bottom: 0.5pt)) Pass / Fail
+  
+  *Notes:* #box(width: 300pt, stroke: (bottom: 0.5pt))
+]
+
+== Test SAR-2: SAR Access Control
+
+*Objective:* Verify only authorized roles can access SAR.
+
+*Steps:*
++ Log in as Electrician — verify SAR link is NOT visible
++ Log in as Admin — verify SAR link IS visible
++ Log in as AO Lead — verify SAR link IS visible
+
+*Expected Results:*
+- SAR link only visible to Admin, AO Lead, Program Manager, Project Manager, PMO
+
+#block(
+  stroke: 0.5pt,
+  inset: 8pt,
+  width: 100%,
+)[
+  *Result:* #box(width: 50pt, stroke: (bottom: 0.5pt)) Pass / Fail
+]
+
+#pagebreak()
+
 = Document Control
 
 #table(
@@ -917,4 +1091,5 @@ Use this checklist to record test results:
   [*Version*], [*Date*], [*Author*], [*Changes*],
   [1.0], [Dec 2025], [TFS Team], [Initial release],
   [1.1], [Dec 2025], [TFS Team], [Added R&R workflow tests, Master Tracker access control tests],
+  [1.2], [Dec 2025], [TFS Team], [Added DAR, IRP, and SAR test procedures],
 )

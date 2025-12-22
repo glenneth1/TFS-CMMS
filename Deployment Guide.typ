@@ -204,14 +204,34 @@ Version: 3.10 or later
 
 === Python Packages
 
-```bash
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+The application expects a Python virtual environment at `../.venv` relative to the application directory (i.e., one level up from the tfs-cmms folder).
 
-# Install required packages
-pip install matplotlib pandas weasyprint pillow
+```bash
+# Create virtual environment (from parent directory)
+cd ~/tfs-cmms
+python3 -m venv ../.venv
+
+# Activate and install dependencies
+source ../.venv/bin/activate
+pip install -r requirements.txt
 ```
+
+The `requirements.txt` file includes:
+- *weasyprint* — PDF generation for DAR and SAR reports
+- *PyMuPDF* — PDF processing
+- *openpyxl* — Excel spreadsheet processing
+- *pandas* — Data analysis and manipulation
+- *pillow* — Image processing
+- *matplotlib* — Chart generation for reports
+
+#block(
+  fill: rgb("#fff3cd"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Note:* The application automatically detects the virtual environment at `../.venv/bin/python3`. If not found, it falls back to the system `python3` command.
+]
 
 === System Libraries
 
@@ -250,17 +270,19 @@ cd ~/tfs-cmms
 # Install SBCL and Quicklisp (as tfs-cmms user)
 # Follow dependency installation from previous section
 
-# Create Python virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Create Python virtual environment (one level up from app directory)
+cd ~/tfs-cmms
+python3 -m venv ../.venv
+source ../.venv/bin/activate
 pip install -r requirements.txt
 ```
 
 == Step 4: Configure Application
 
 ```bash
-# Create data directory
-mkdir -p data uploads/buildings uploads/deficiencies reports
+# Create data and reports directories
+mkdir -p data uploads/buildings uploads/deficiencies
+mkdir -p reports/dar reports/sar
 
 # Set permissions
 chmod 755 data uploads reports

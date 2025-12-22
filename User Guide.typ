@@ -694,6 +694,128 @@ AO Leads and Program Managers review and approve R&R requests:
 
 #pagebreak()
 
+= Daily Activity Reports (DAR)
+
+The Daily Activity Report system allows electrician teams to document their daily activities and submit reports to QA/QC.
+
+== Accessing DAR
+
+Navigate to *DAR* in the main navigation menu.
+
+== Creating a New DAR
+
++ Click *New DAR*
++ Fill in the report details:
+  - *Date* — Report date
+  - *Team Number* — Your assigned team number
+  - *Team Member Names* — Names of team members
+  - *Camp/Location* — Work location
+  - *Site Lead* — Name of site lead
++ Complete the Safety section:
+  - *Toolbox Topic* — Safety topic discussed
+  - *Attended Safety Brief* — Yes/No
+  - *HECP Package Submitted* — Checkbox
++ Add Activity Records:
+  - Select *Time* from dropdown (30-minute increments)
+  - Enter *Activity* description
+  - Add optional *Notes*
+  - Click *+ Add Activity* for additional rows
++ Add Reports Submitted to QA/QC:
+  - Enter *Report TAG ID*
+  - Select *Submitted* status (Yes/No)
+  - Click *+ Add Report* for additional rows
++ Click *Submit DAR*
+
+== Viewing and Downloading DAR
+
++ Navigate to *DAR* list
++ Click *View* on any report
++ Click *Download PDF* to generate a PDF with naming convention: `DAR_SITE_DATE_TEAM.pdf`
+
+== Access Control
+
+#table(
+  columns: (auto, 1fr),
+  stroke: 0.5pt,
+  inset: 8pt,
+  [*Role*], [*Access*],
+  [Electrician], [Create and view own team's DARs],
+  [Master Electrician], [View all DARs],
+  [Admin], [Full access to all DARs],
+  [AO Lead], [View all DARs],
+)
+
+#pagebreak()
+
+= Immediate Repair Package (IRP)
+
+The IRP system tracks standard inventory items issued to electrician teams.
+
+== Accessing IRP
+
+Navigate to *IRP* in the main navigation menu.
+
+== Creating a New IRP Submission
+
++ Click *New IRP*
++ Fill in submission details:
+  - *Date* — Submission date
+  - *Team Number* — Your assigned team number
+  - *Camp/Location* — Work location
++ Review the standard items list (37 items)
++ For each item, enter:
+  - *Issued Qty* — Quantity originally issued
+  - *Current Qty* — Current quantity on hand
++ Click *Submit IRP*
+
+== Viewing IRP Submissions
+
++ Navigate to *IRP* list
++ Click *View* on any submission
++ Items with discrepancies (issued ≠ current) are highlighted in yellow
+
+#pagebreak()
+
+= Site Activity Report (SAR)
+
+The Site Activity Report is a consolidated multi-page PDF showing all inspection activity across all sites for a given date.
+
+== Accessing SAR
+
+Navigate to *SAR* in the main navigation menu. This link is only visible to authorized roles.
+
+== Generating a SAR
+
++ Select the *Report Date*
++ Click *Generate SAR PDF*
++ The PDF downloads with naming convention: `DAR_ALL_SITES_DD-MMM-YY.pdf`
+
+== SAR Content
+
+Each page of the SAR shows one site with:
+- Army logo (top left) and TFS logo (top right)
+- Site name banner
+- Table with columns:
+  - *TEAM* — Team number
+  - *Date* — Inspection date
+  - *Location* — Site/camp name
+  - *Facility/Building Number* — Building inspected
+  - *Report TAG ID* — Full inspection report number
+  - *Reports Submitted* — YES (green) or NO (red)
+  - *SPLO* — Safety status
+  - *EWP* — Safety status
+
+== Access Control
+
+Only the following roles can generate SAR reports:
+- Admin
+- AO Lead
+- Program Manager
+- Project Manager
+- PMO
+
+#pagebreak()
+
 = Appendix A: Deficiency Categories
 
 #table(
@@ -759,4 +881,5 @@ Examples:
   [*Version*], [*Date*], [*Author*], [*Changes*],
   [1.0], [Dec 2025], [TFS Team], [Initial release],
   [1.1], [Dec 2025], [TFS Team], [Added R&R Management section, updated user roles, added date format appendix],
+  [1.2], [Dec 2025], [TFS Team], [Added DAR, IRP, and SAR documentation sections],
 )
