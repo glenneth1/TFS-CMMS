@@ -439,7 +439,9 @@
                    (:span :class "detail-value" (cl-who:str (or (getf item :|property_usage|) "—"))))
                  (:div :class "detail-row"
                    (:span :class "detail-label" "Last Audit")
-                   (:span :class "detail-value" (cl-who:str (or (getf item :|last_audit_date|) "Never")))))))))
+                   (:span :class "detail-value" (cl-who:str (if (getf item :|last_audit_date|)
+                                                                       (format-date-display (getf item :|last_audit_date|))
+                                                                       "Never")))))))))
         (html-response
          (render-page "Item Not Found"
            (cl-who:with-html-output-to-string (s)
