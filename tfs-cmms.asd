@@ -24,5 +24,6 @@
                              (:file "inventory")
                              (:file "mrf")
                              (:file "rr")
+                             (:file "dar")
                              (:file "reports")
                              (:file "routes")))))

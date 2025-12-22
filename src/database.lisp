@@ -618,6 +618,87 @@
   (execute-sql "CREATE INDEX IF NOT EXISTS idx_mrf_status ON material_requests(status)")
   (execute-sql "CREATE INDEX IF NOT EXISTS idx_mrf_requestor ON material_requests(requestor_id)")
   
+  ;; Daily Activity Reports (DAR)
+  (execute-sql "
+    CREATE TABLE IF NOT EXISTS daily_activity_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_date TEXT NOT NULL,
+      team_number TEXT NOT NULL,
+      team_member_name TEXT NOT NULL,
+      team_mate_name TEXT,
+      camp_location TEXT NOT NULL,
+      site_lead TEXT,
+      toolbox_topic TEXT,
+      attended_safety_brief INTEGER DEFAULT 0,
+      hecp_submitted INTEGER DEFAULT 0,
+      submitted_by INTEGER NOT NULL,
+      status TEXT DEFAULT 'Draft',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (submitted_by) REFERENCES users(id)
+    )")
+
+  ;; DAR Activity entries (multiple per DAR)
+  (execute-sql "
+    CREATE TABLE IF NOT EXISTS dar_activities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dar_id INTEGER NOT NULL,
+      activity_time TEXT,
+      activity_description TEXT,
+      notes TEXT,
+      FOREIGN KEY (dar_id) REFERENCES daily_activity_reports(id) ON DELETE CASCADE
+    )")
+
+  ;; DAR Reports submitted (multiple per DAR)
+  (execute-sql "
+    CREATE TABLE IF NOT EXISTS dar_reports_submitted (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dar_id INTEGER NOT NULL,
+      report_tag_id TEXT,
+      submitted INTEGER DEFAULT 0,
+      FOREIGN KEY (dar_id) REFERENCES daily_activity_reports(id) ON DELETE CASCADE
+    )")
+
+  ;; IRP Standard Items (default quantities for all teams)
+  (execute-sql "
+    CREATE TABLE IF NOT EXISTS irp_standard_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_number INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      make TEXT,
+      part_number TEXT,
+      uom TEXT NOT NULL,
+      std_issue_qty INTEGER NOT NULL DEFAULT 0,
+      active INTEGER DEFAULT 1
+    )")
+
+  ;; IRP Submissions (team inventory reports)
+  (execute-sql "
+    CREATE TABLE IF NOT EXISTS irp_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submission_date TEXT NOT NULL,
+      team_number TEXT NOT NULL,
+      camp_location TEXT NOT NULL,
+      submitted_by INTEGER NOT NULL,
+      status TEXT DEFAULT 'Draft',
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (submitted_by) REFERENCES users(id)
+    )")
+
+  ;; IRP Submission Items (actual quantities per submission)
+  (execute-sql "
+    CREATE TABLE IF NOT EXISTS irp_submission_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submission_id INTEGER NOT NULL,
+      irp_item_id INTEGER NOT NULL,
+      issued_qty INTEGER NOT NULL DEFAULT 0,
+      current_qty INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (submission_id) REFERENCES irp_submissions(id) ON DELETE CASCADE,
+      FOREIGN KEY (irp_item_id) REFERENCES irp_standard_items(id)
+    )")
+
   ;; Seed default system settings
   (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
                 VALUES ('contract_number', 'W912DY24R0043', 'Current contract number for MRF forms')")

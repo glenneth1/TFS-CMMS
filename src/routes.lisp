@@ -82,6 +82,8 @@
           (:li (:a :href "/inventory" "Inventory"))
           (:li (:a :href "/mrf" "MRF"))
           (:li (:a :href "/rr" "R&R"))
+          (:li (:a :href "/dar" "DAR"))
+          (:li (:a :href "/irp" "IRP"))
           (when (and user (user-can-access-master-tracker-p user))
             (cl-who:htm
              (:li (:a :href "/master-tracker" "Master Tracker"))))
@@ -2809,6 +2811,30 @@
        (handle-weekly-report))
       ((string= uri "/api/master-tracker/camps")
        (handle-api-camps-by-country))
+      
+      ;; DAR (Daily Activity Report) routes
+      ((string= uri "/dar")
+       (handle-dar-list))
+      ((string= uri "/dar/new")
+       (handle-dar-new))
+      ((cl-ppcre:scan "^/dar/(\\d+)$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/dar/(\\d+)$" uri)
+         (declare (ignore match))
+         (handle-dar-detail (aref groups 0))))
+      ((and (eq method :post) (string= uri "/api/dar/create"))
+       (handle-api-dar-create))
+      
+      ;; IRP (Immediate Repair Package) routes
+      ((string= uri "/irp")
+       (handle-irp-list))
+      ((string= uri "/irp/new")
+       (handle-irp-new))
+      ((cl-ppcre:scan "^/irp/(\\d+)$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/irp/(\\d+)$" uri)
+         (declare (ignore match))
+         (handle-irp-detail (aref groups 0))))
+      ((and (eq method :post) (string= uri "/api/irp/create"))
+       (handle-api-irp-create))
       
       ;; API endpoints
       ((and (eq method :post) (string= uri "/api/sites/create"))
