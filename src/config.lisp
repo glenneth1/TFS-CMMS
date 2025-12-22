@@ -21,6 +21,13 @@
 (defvar *server-port* 8080
   "Port for the web server.")
 
+(defvar *python-path*
+  (let ((venv-python (merge-pathnames "../.venv/bin/python3" (get-app-directory))))
+    (if (probe-file venv-python)
+        (namestring venv-python)
+        "python3"))
+  "Path to Python interpreter. Uses project venv if available, otherwise system python3.")
+
 (defvar *wo-prefix* "TFS"
   "Prefix for work order numbers.")
 

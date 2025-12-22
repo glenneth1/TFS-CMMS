@@ -307,7 +307,13 @@
                      (:div :class "activity-row form-row"
                        (:div :class "form-group" :style "width: 100px;"
                          (:label "Time")
-                         (:input :type "time" :name "activity_time[]"))
+                         (:select :name "activity_time[]" :class "time-select"
+                           (:option :value "" "-- Time --")
+                           (loop for hour from 0 to 23
+                                 do (loop for min in '(0 30)
+                                          do (cl-who:htm
+                                              (:option :value (format nil "~2,'0D:~2,'0D" hour min)
+                                                       (cl-who:str (format nil "~2,'0D:~2,'0D" hour min))))))))
                        (:div :class "form-group" :style "flex: 2;"
                          (:label "Activity")
                          (:input :type "text" :name "activity_desc[]" :placeholder "e.g., TEAM MEETING"))
@@ -334,11 +340,19 @@
                    (:a :href "/dar" :class "btn" "Cancel"))
                  (:script :type "text/javascript"
                    (cl-who:str "
+var timeOptions = '<option value=\"\">-- Time --</option>';
+for (var h = 0; h < 24; h++) {
+  for (var m = 0; m < 60; m += 30) {
+    var hh = h.toString().padStart(2, '0');
+    var mm = m.toString().padStart(2, '0');
+    timeOptions += '<option value=\"' + hh + ':' + mm + '\">' + hh + ':' + mm + '</option>';
+  }
+}
 function addActivityRow() {
   var container = document.getElementById('activities-container');
   var row = document.createElement('div');
   row.className = 'activity-row form-row';
-  row.innerHTML = '<div class=\"form-group\" style=\"width: 100px;\"><input type=\"time\" name=\"activity_time[]\"></div>' +
+  row.innerHTML = '<div class=\"form-group\" style=\"width: 100px;\"><select name=\"activity_time[]\" class=\"time-select\">' + timeOptions + '</select></div>' +
                   '<div class=\"form-group\" style=\"flex: 2;\"><input type=\"text\" name=\"activity_desc[]\" placeholder=\"e.g., LUNCH\"></div>' +
                   '<div class=\"form-group\" style=\"flex: 1;\"><input type=\"text\" name=\"activity_notes[]\" placeholder=\"Optional\"></div>' +
                   '<button type=\"button\" class=\"btn btn-sm\" onclick=\"this.parentNode.remove()\" style=\"margin-top: 5px;\">Remove</button>';
@@ -448,7 +462,7 @@ function addReportRow() {
          (dar-id (parse-int id-str))
          (dar (when dar-id (get-dar-by-id dar-id))))
     (if (and user dar (user-can-view-dar-p user dar))
-        (let* ((python-path "/home/glenn/Notes/org/TFS/CMMS/.venv/bin/python3")
+        (let* ((python-path *python-path*)
                (script-path (namestring (merge-pathnames "scripts/generate_dar_pdf.py" *base-directory*)))
                (reports-dir (namestring (merge-pathnames "reports/dar/" *base-directory*))))
           ;; Generate PDF
@@ -721,7 +735,7 @@ function addReportRow() {
                                     (decode-universal-time (get-universal-time))
                                   (declare (ignore sec min hour))
                                   (format nil "~4,'0D-~2,'0D-~2,'0D" year month day))))
-               (python-path "/home/glenn/Notes/org/TFS/CMMS/.venv/bin/python3")
+               (python-path *python-path*)
                (script-path (namestring (merge-pathnames "scripts/generate_sar_pdf.py" *base-directory*)))
                (reports-dir (namestring (merge-pathnames "reports/sar/" *base-directory*))))
           ;; Ensure directory exists
