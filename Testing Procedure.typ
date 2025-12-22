@@ -726,6 +726,155 @@ Check that the PDF includes:
 
 #pagebreak()
 
+= Test 11: R&R Request Workflow
+
+== Objective
+
+Verify that electricians can submit R&R requests and managers can approve them.
+
+== Prerequisites
+
+- Electrician account with BOG date set
+- AO Lead or Program Manager account
+
+== Procedure
+
+=== Step 11.1: Login as Electrician
+
++ Login with Electrician credentials
++ Navigate to *R&R* from the main menu
++ Verify the R&R Dashboard displays:
+  - R&R Balance (calculated from BOG date)
+  - Any pending or approved requests
+
+#block(
+  fill: rgb("#cce5ff"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Expected Result:* Dashboard shows accrued R&R days based on BOG date.
+]
+
+=== Step 11.2: Submit R&R Request
+
++ Click *Request R&R*
++ Enter Start Date (including travel day)
++ Enter End Date (including travel day)
++ Enter Flying To destination (e.g., "London, UK")
++ Enter Returning From location
++ Click *Submit Request*
+
+#block(
+  fill: rgb("#cce5ff"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Expected Result:* Request appears in Pending Requests table with status "Pending".
+]
+
+=== Step 11.3: Login as AO Lead
+
++ Logout of Electrician account
++ Login with AO Lead credentials
++ Navigate to *R&R* → *Approval Queue*
+
+#block(
+  fill: rgb("#cce5ff"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Expected Result:* Pending request appears in Electrician Requests section with conflict indicator.
+]
+
+=== Step 11.4: Approve R&R Request
+
++ Review the request details
++ Check the Conflicts column (should show slots available)
++ Click *Approve*
+
+#block(
+  fill: rgb("#cce5ff"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Expected Result:* Request status changes to "Approved". Request appears in R&R Calendar.
+]
+
+=== Step 11.5: Edit R&R Details
+
++ Navigate to *R&R* → *Calendar*
++ Click on the employee's name
++ Update the Flying To destination
++ Click *Save Changes*
+
+#block(
+  fill: rgb("#cce5ff"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Expected Result:* Changes saved and reflected in calendar view.
+]
+
+#pagebreak()
+
+= Test 12: Master Tracker Access Control
+
+== Objective
+
+Verify that Master Tracker access is restricted to authorized roles.
+
+== Procedure
+
+=== Step 12.1: Test Unauthorized Access
+
++ Login as Electrician (non-authorized role)
++ Attempt to navigate to `/master-tracker`
+
+#block(
+  fill: rgb("#cce5ff"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Expected Result:* User is redirected to Unauthorized page. Master Tracker link not visible in navigation.
+]
+
+=== Step 12.2: Test Authorized Access
+
++ Login as QC Manager (authorized role)
++ Navigate to *Master Tracker*
+
+#block(
+  fill: rgb("#cce5ff"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Expected Result:* Master Tracker page loads with filter controls and deficiency data.
+]
+
+=== Step 12.3: Generate Weekly Report
+
++ From Master Tracker, click *Generate Weekly Report*
++ Select date range
++ Click *Generate Report Slides*
+
+#block(
+  fill: rgb("#cce5ff"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Expected Result:* Report slides generated and displayed. Download buttons available.
+]
+
+#pagebreak()
+
 = Test Results Summary
 
 Use this checklist to record test results:
@@ -745,6 +894,8 @@ Use this checklist to record test results:
   [8. User Management], [ ], [ ], [],
   [9. Re-inspection Workflow], [ ], [ ], [],
   [10. PDF Generation], [ ], [ ], [],
+  [11. R&R Request Workflow], [ ], [ ], [],
+  [12. Master Tracker Access], [ ], [ ], [],
 )
 
 #v(1cm)
@@ -765,4 +916,5 @@ Use this checklist to record test results:
   inset: 8pt,
   [*Version*], [*Date*], [*Author*], [*Changes*],
   [1.0], [Dec 2025], [TFS Team], [Initial release],
+  [1.1], [Dec 2025], [TFS Team], [Added R&R workflow tests, Master Tracker access control tests],
 )

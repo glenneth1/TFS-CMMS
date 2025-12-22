@@ -89,16 +89,20 @@ TFS-CMMS is a web-based application that supports the following core functions:
 
 == User Roles
 
-The system supports three user roles:
+The system supports the following user roles:
 
 #table(
   columns: (auto, 1fr),
   stroke: 0.5pt,
   inset: 8pt,
   [*Role*], [*Description*],
-  [Administrator], [Full system access including user management, site configuration, and all QC functions],
-  [QC], [Quality Control personnel who review and approve/reject inspection reports],
+  [Administrator], [Full system access including user management, site configuration, Master Tracker, and all QC functions],
+  [Program Manager], [Program oversight, R&R approval, Master Tracker access, weekly report generation],
+  [AO Lead], [Area of Operations Lead - R&R approval for electricians, Master Tracker access],
+  [QC Manager], [QC oversight, report assignment, Master Tracker access, weekly report generation],
+  [QC], [Quality Control personnel who review and approve/reject inspection reports, Master Tracker access],
   [Inspector], [Field personnel who create and submit inspection reports (covered in separate guide)],
+  [Electrician], [Field electricians who can submit R&R requests and view their own R&R status],
 )
 
 #pagebreak()
@@ -176,7 +180,15 @@ Administrators can create, modify, and deactivate user accounts.
 
 + Navigate to *Admin* → *Users*
 + Click on the user's name or the *Edit* button
-+ Modify the required fields
++ Modify the required fields:
+  - *Full Name* — User's display name
+  - *Email* — Contact email address
+  - *Role* — User's access level
+  - *Electrician Type* — Master or Journeyman (for electricians)
+  - *Team Number* — Assigned team
+  - *Hire Date* — Employment start date
+  - *BOG Date* — Boots on Ground date (used for R&R accrual calculations)
+  - *Status* — Active or Inactive
 + Click *Save* to apply changes
 
 === Deactivating a User
@@ -588,6 +600,100 @@ For technical support:
 
 #pagebreak()
 
+= R&R (Rest and Recuperation) Management
+
+The R&R module allows management of employee leave requests and travel arrangements.
+
+== Accessing R&R
+
++ From the main menu, click *R&R*
++ Electricians see their personal R&R dashboard
++ Managers see the R&R calendar and approval queue
+
+== R&R Dashboard (Electricians)
+
+The personal dashboard displays:
+- *R&R Balance* — Accrued days minus used days
+- *Pending Requests* — Requests awaiting approval
+- *Approved Upcoming* — Confirmed future R&R
+- *R&R History* — Past requests and their status
+
+=== Submitting an R&R Request
+
++ Click *Request R&R*
++ Enter the requested dates (including travel days)
++ Specify travel destination (Flying To)
++ Specify return location (Returning From)
++ Click *Submit Request*
+
+#block(
+  fill: rgb("#fff3cd"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Note:* R&R allowance is 15 days plus 2 travel days (17 total). Requests are subject to approval based on operational requirements.
+]
+
+== R&R Calendar (Managers)
+
+The R&R Calendar provides a monthly view of all approved and pending R&R.
+
+=== Viewing the Calendar
+
++ Navigate to *R&R* → *Calendar*
++ Use the month/year selectors to navigate
++ The calendar displays:
+  - Employee names (clickable to edit)
+  - Electrician type (Master/Journeyman)
+  - Start and end dates
+  - Travel destinations
+  - Current status
+
+=== Editing R&R Details
+
+Administrators, AO Leads, and Program Managers can edit R&R requests:
+
++ Click on the employee's name in the calendar
++ Update the following fields:
+  - Status (Pending/Approved/Rejected/Completed)
+  - Start and End dates
+  - Flying To destination
+  - Returning From location
++ Click *Save Changes*
+
+=== Printable Flight Schedule
+
++ From the R&R Calendar, click *Print View*
++ The print view shows:
+  - Outbound flights (departures this month)
+  - Return flights (arrivals this month)
+  - Employee details and travel information
++ Use browser print function or save as PDF
+
+== R&R Approval Queue
+
+AO Leads and Program Managers review and approve R&R requests:
+
++ Navigate to *R&R* → *Approval Queue*
++ Review pending requests by category:
+  - Electrician requests (max 3 concurrent)
+  - PMO requests (max 1 concurrent)
+  - QC requests (max 1 concurrent)
++ Check for scheduling conflicts
++ Click *Approve* or *Reject* for each request
+
+#block(
+  fill: rgb("#f8d7da"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Important:* The system displays conflict warnings when approving would exceed maximum concurrent leave limits.
+]
+
+#pagebreak()
+
 = Appendix A: Deficiency Categories
 
 #table(
@@ -635,6 +741,15 @@ Used for sites with 230/400V systems:
 
 #pagebreak()
 
+= Appendix D: Date Format
+
+All dates in the system are displayed in the international format *DD-MMM-YYYY* (e.g., 21-DEC-2025) to avoid confusion between US (MM/DD/YYYY) and UK (DD/MM/YYYY) formats.
+
+Examples:
+- 15-JAN-2025
+- 03-MAR-2025
+- 22-DEC-2025
+
 = Document Control
 
 #table(
@@ -643,4 +758,5 @@ Used for sites with 230/400V systems:
   inset: 8pt,
   [*Version*], [*Date*], [*Author*], [*Changes*],
   [1.0], [Dec 2025], [TFS Team], [Initial release],
+  [1.1], [Dec 2025], [TFS Team], [Added R&R Management section, updated user roles, added date format appendix],
 )
