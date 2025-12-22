@@ -330,12 +330,12 @@
                     (cl-who:htm
                      (:tr
                        (:td (cl-who:str (format nil "~A to ~A" 
-                                                (getf req :|start_date|) 
-                                                (getf req :|end_date|))))
+                                                (format-date-display (getf req :|start_date|)) 
+                                                (format-date-display (getf req :|end_date|)))))
                        (:td (cl-who:str (getf req :|total_days|)))
                        (:td (cl-who:str (or (getf req :|travel_to|) "-")))
                        (:td (:span :class "badge badge-warning" "Pending"))
-                       (:td (cl-who:str (subseq (or (getf req :|requested_at|) "") 0 10)))))))))))
+                       (:td (cl-who:str (format-date-display (subseq (or (getf req :|requested_at|) "") 0 10))))))))))))
          
          ;; Approved Upcoming
          (when approved-requests
@@ -350,8 +350,8 @@
                     (cl-who:htm
                      (:tr
                        (:td (cl-who:str (format nil "~A to ~A" 
-                                                (getf req :|start_date|) 
-                                                (getf req :|end_date|))))
+                                                (format-date-display (getf req :|start_date|)) 
+                                                (format-date-display (getf req :|end_date|)))))
                        (:td (cl-who:str (getf req :|total_days|)))
                        (:td (cl-who:str (or (getf req :|travel_to|) "-")))
                        (:td (cl-who:str (or (getf req :|reviewer_name|) "-")))))))))))
@@ -369,8 +369,8 @@
                       (cl-who:htm
                        (:tr
                          (:td (cl-who:str (format nil "~A to ~A" 
-                                                  (getf req :|start_date|) 
-                                                  (getf req :|end_date|))))
+                                                  (format-date-display (getf req :|start_date|)) 
+                                                  (format-date-display (getf req :|end_date|)))))
                          (:td (cl-who:str (getf req :|total_days|)))
                          (:td (cl-who:str (or (getf req :|travel_to|) "-")))
                          (:td (:span :class (format nil "badge badge-~A" 
