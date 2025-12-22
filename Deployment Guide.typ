@@ -702,6 +702,59 @@ export TFS_CMMS_PORT=8443
 
 #pagebreak()
 
+= Standalone Executable Build
+
+For environments where installing SBCL and Quicklisp is not practical, a standalone executable can be built.
+
+== Building the Package
+
+On your development machine (where SBCL and Quicklisp are installed):
+
+```bash
+cd /path/to/tfs-cmms
+make package
+```
+
+This creates a `dist/` folder containing everything needed to run the application.
+
+== Creating a Distributable Tarball
+
+```bash
+make dist
+```
+
+This creates `tfs-cmms-YYYYMMDD.tar.gz`.
+
+== Package Contents
+
+```text
+dist/
+├── tfs-cmms          # Standalone executable (~80-150MB)
+├── start.sh          # Startup script
+├── static/           # CSS, JavaScript, images
+│   ├── css/
+│   ├── js/
+│   └── img/
+└── data/             # Database directory (created automatically)
+```
+
+== Deploying the Standalone Executable
+
++ Copy tarball to server: `scp tfs-cmms-YYYYMMDD.tar.gz user@server:/opt/`
++ Extract: `tar -xzvf tfs-cmms-YYYYMMDD.tar.gz && mv dist tfs-cmms`
++ Start: `./start.sh`
+
+#block(
+  fill: rgb("#fff3cd"),
+  inset: 10pt,
+  radius: 4pt,
+  width: 100%,
+)[
+  *Cross-Platform Note:* The executable is built for the same OS/architecture as the build machine. Build on an older Linux system (e.g., Ubuntu 20.04) for wider glibc compatibility.
+]
+
+#pagebreak()
+
 = Document Control
 
 #table(
@@ -710,4 +763,5 @@ export TFS_CMMS_PORT=8443
   inset: 8pt,
   [*Version*], [*Date*], [*Author*], [*Changes*],
   [1.0], [Dec 2025], [TFS Team], [Initial release],
+  [1.1], [Dec 2025], [TFS Team], [Added Python venv setup, DAR/SAR report directories, standalone executable build section],
 )

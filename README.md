@@ -1,17 +1,34 @@
-# TF SAFE CMMS
+# TFS-CMMS
 
 ## Task Force SAFE - Computerized Maintenance Management System
 
-A self-hosted CMMS built with Common Lisp and the Radiance web framework, designed to meet PWS Section 17.0 requirements for the Task Force SAFE program.
+A web-based CMMS built with Common Lisp (SBCL/Hunchentoot) and SQLite, designed for managing electrical inspection reports, deficiency tracking, and operational reporting across multiple international sites.
 
 ## Features
 
+### Core Modules
+
+- **Inspection Reports**: Create, submit, and track electrical inspection reports with QC workflow
 - **Work Order Management**: Create, track, and close work orders with auto-generated WO numbers
-- **Asset Hierarchy**: Site → Facility → System → Asset → Component structure
-- **Inventory Tracking**: Stock items, transactions, burn rate calculations, reorder alerts
+- **Deficiency Tracking**: Master Tracker for all deficiencies across sites
+- **Material Request Forms (MRF)**: Request and track materials for repairs
+
+### Daily Operations
+
+- **Daily Activity Reports (DAR)**: Electrician teams document daily activities
+- **Immediate Repair Package (IRP)**: Track standard inventory items issued to teams
+- **Site Activity Report (SAR)**: Consolidated multi-site PDF for AO Lead/PMO
+
+### Personnel Management
+
+- **R&R Leave Management**: Request, approve, and track Rest & Recuperation leave
+- **Role-Based Access Control**: Admin, AO Lead, QC Manager, Inspector, Electrician, and more
+
+### Reporting
+
+- **PDF Generation**: Inspection reports, DARs, and consolidated SARs
 - **Weekly Reports**: Per-site status reports matching PWS requirements
 - **Audit Trail**: Full change history on all work orders
-- **Job Plans**: Reusable templates with steps and default materials
 
 ## WO Number Format
 
@@ -24,9 +41,21 @@ Example: TFS-AJ-2025-00001
 
 ## Requirements
 
-- SBCL (Steel Bank Common Lisp) or another Common Lisp implementation
+- SBCL (Steel Bank Common Lisp) 2.2.0 or later
 - Quicklisp package manager
 - SQLite3
+- Python 3.10+ with virtual environment (for PDF generation)
+
+### Python Dependencies
+
+```bash
+# Create virtual environment (one level up from app directory)
+python3 -m venv ../.venv
+source ../.venv/bin/activate
+pip install -r requirements.txt
+```
+
+Key packages: weasyprint, PyMuPDF, openpyxl, pandas, pillow
 
 ## Installation
 
@@ -84,12 +113,19 @@ Then open <http://localhost:8080> in your browser.
 
 ### Web Pages
 
+- `/` - Dashboard
+- `/inspection-reports` - Inspection report list and management
 - `/work-orders` - Work order list and management
-- `/work-orders/new` - Create new work order
-- `/work-orders/:id` - Work order detail/edit
 - `/sites` - Site management
 - `/inventory` - Inventory management
+- `/mrf` - Material Request Forms
+- `/dar` - Daily Activity Reports
+- `/irp` - Immediate Repair Package
+- `/sar` - Site Activity Report (Admin/AO Lead only)
+- `/rr` - R&R Leave Management
+- `/master-tracker` - Deficiency tracking
 - `/reports` - Weekly report generation
+- `/admin/users` - User management (Admin only)
 
 ## Database
 
@@ -124,6 +160,14 @@ This system addresses PWS Section 17.0 requirements:
 | Specs, warranty, manufacturer data | Asset records with all fields |
 | Job plans with materials | Job plan templates with BOM |
 | Weekly per-site status report | Automated report generation |
+
+## Documentation
+
+Detailed documentation is available in Typst format:
+
+- **User Guide.typ** - End-user documentation for all roles
+- **Testing Procedure.typ** - Test cases and verification procedures
+- **Deployment Guide.typ** - Server setup, installation, and maintenance
 
 ## License
 
