@@ -6,6 +6,16 @@ tfs-cmms-*.tar.gz
 # Database
 data/*.db
 
+# Reference files (PDFs, spreadsheets)
+reference/
+
+# Generated reports
+reports/dar/
+reports/sar/
+
+# Excel temp files
+~$*.xlsx
+
 # Common Lisp cache
 *.fasl
 *.fas
