@@ -620,7 +620,10 @@ function hideRejectModal() {
                                               (t "rr-journeyman"))))
                             (cl-who:htm
                              (:tr :class row-class
-                               (:td (cl-who:str (getf rr :|full_name|)))
+                               (:td (if is-admin
+                                        (cl-who:htm (:a :href (format nil "/rr/~A/edit" (getf rr :|id|)) 
+                                                        (cl-who:str (getf rr :|full_name|))))
+                                        (cl-who:htm (cl-who:str (getf rr :|full_name|)))))
                                (:td (cl-who:str (or elec-type "-")))
                                (:td (cl-who:str (getf rr :|start_date|)))
                                (:td (cl-who:str (getf rr :|end_date|)))
