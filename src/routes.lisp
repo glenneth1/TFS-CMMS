@@ -954,7 +954,7 @@
                               (:tr
                                 (:td (cl-who:str (getf rpt :|report_number|)))
                                 (:td (cl-who:str (getf rpt :|inspection_phase|)))
-                                (:td (cl-who:str (getf rpt :|inspection_date|)))
+                                (:td (cl-who:str (format-date-display (getf rpt :|inspection_date|))))
                                 (:td (:span :class "status-badge" (cl-who:str (getf rpt :|status|))))
                                 (:td 
                                   (:a :href (format nil "/inspection-reports/~A" (getf rpt :|id|))
@@ -1417,7 +1417,7 @@
                                                (or (getf rpt :|site_code|) "-"))))
                       (:td (cl-who:str (getf rpt :|building_number|)))
                       (:td (cl-who:str (getf rpt :|inspection_phase|)))
-                      (:td (cl-who:str (getf rpt :|inspection_date|)))
+                      (:td (cl-who:str (format-date-display (getf rpt :|inspection_date|))))
                       (:td (:span :class "status-badge" (cl-who:str (getf rpt :|status|))))
                       (:td 
                         (let ((rej-count (or (getf rpt :|rejection_count|) 0)))
@@ -1585,7 +1585,7 @@
                  (:h2 "Inspection Info")
                  (:dl :class "detail-list"
                    (:dt "Phase") (:dd (cl-who:str (getf report :|inspection_phase|)))
-                   (:dt "Date") (:dd (cl-who:str (getf report :|inspection_date|)))
+                   (:dt "Date") (:dd (cl-who:str (format-date-display (getf report :|inspection_date|))))
                    (:dt "Team") (:dd (cl-who:str (getf report :|team_number|)))
                    (:dt "Overall Rating") (:dd (cl-who:str (or (getf report :|overall_rating|) "Not set")))
                    (:dt "Location") (:dd (cl-who:str (or (getf report :|location_description|) "-"))))))
@@ -2022,7 +2022,7 @@
                           (dolist (d deficiencies)
                             (cl-who:htm
                              (:tr
-                               (:td (cl-who:str (or (getf d :|inspection_date|) "-")))
+                               (:td (cl-who:str (format-date-display (getf d :|inspection_date|))))
                                (:td (cl-who:str (getf d :|country_name|)))
                                (:td (cl-who:str (getf d :|camp_name|)))
                                (:td (cl-who:str (or (getf d :|building_number|) "-")))
