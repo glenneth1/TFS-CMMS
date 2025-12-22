@@ -33,6 +33,17 @@
          (result (dbi:execute query params)))
     (dbi:fetch result)))
 
+(defun format-date-display (date-str)
+  "Format YYYY-MM-DD as DD-MMM-YYYY for display (e.g., 21-DEC-2025)."
+  (if (and date-str (stringp date-str) (>= (length date-str) 10))
+      (let* ((year (subseq date-str 0 4))
+             (month-num (parse-integer (subseq date-str 5 7)))
+             (day (subseq date-str 8 10))
+             (month-abbrev (nth (1- month-num) '("JAN" "FEB" "MAR" "APR" "MAY" "JUN" 
+                                                  "JUL" "AUG" "SEP" "OCT" "NOV" "DEC"))))
+        (format nil "~A-~A-~A" day month-abbrev year))
+      (or date-str "-")))
+
 (defun init-database ()
   "Initialize the database schema."
   (connect-db)

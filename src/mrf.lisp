@@ -226,7 +226,7 @@
                       (:tr
                         (:td (:a :href (format nil "/mrf/~A" (getf mrf :|id|))
                                  (cl-who:str (getf mrf :|mrf_number|))))
-                        (:td (cl-who:str (or (getf mrf :|request_date|) "")))
+                        (:td (cl-who:str (format-date-display (getf mrf :|request_date|))))
                         (:td (cl-who:str (or (getf mrf :|base|) "")))
                         (:td (cl-who:str (or (getf mrf :|building_number|) "")))
                         (:td (cl-who:str (or (getf mrf :|requestor_name|) "")))
@@ -273,7 +273,7 @@
                (:div :style "display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;"
                  (:div
                    (:label :style "font-weight: bold; display: block;" "Date")
-                   (:span (cl-who:str (or (getf mrf :|request_date|) ""))))
+                   (:span (cl-who:str (format-date-display (getf mrf :|request_date|)))))
                  (:div
                    (:label :style "font-weight: bold; display: block;" "Team Number")
                    (:span (cl-who:str (or (getf mrf :|team_number|) ""))))
@@ -504,7 +504,7 @@ th { background: #f0f0f0; font-weight: bold; }
                    (:h1 "Materials / Tools Request")
                    (:h2 :class "mrf-number" (cl-who:str (getf mrf :|mrf_number|))))
                  (:div :style "text-align: right;"
-                   (:div (:strong "Date: ") (cl-who:str (getf mrf :|request_date|)))
+                   (:div (:strong "Date: ") (cl-who:str (format-date-display (getf mrf :|request_date|))))
                    (:div (:strong "Contract: ") (cl-who:str (or (getf mrf :|contract_number|) "")))))
                
                (:div :class "info-grid"
