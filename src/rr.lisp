@@ -774,9 +774,9 @@ th { background: #f0f0f0; font-weight: bold; }
                                (:td (cl-who:str (getf rr :|full_name|)))
                                (:td (cl-who:str (or elec-type "-")))
                                (:td (cl-who:str (or (getf rr :|current_location|) "-")))
-                               (:td (:strong (cl-who:str (getf rr :|start_date|))))
+                               (:td (:strong (cl-who:str (format-date-display (getf rr :|start_date|)))))
                                (:td (cl-who:str (or (getf rr :|travel_to|) "TBD")))
-                               (:td (cl-who:str (getf rr :|end_date|))))))))))
+                               (:td (cl-who:str (format-date-display (getf rr :|end_date|)))))))))))
                    (cl-who:htm
                     (:p :style "color: #666; margin: 10px 0;" "No outbound flights this month.")))
                
@@ -802,9 +802,9 @@ th { background: #f0f0f0; font-weight: bold; }
                                (:td (cl-who:str (getf rr :|full_name|)))
                                (:td (cl-who:str (or elec-type "-")))
                                (:td (cl-who:str (or (getf rr :|travel_from|) "TBD")))
-                               (:td (:strong (cl-who:str (getf rr :|end_date|))))
+                               (:td (:strong (cl-who:str (format-date-display (getf rr :|end_date|)))))
                                (:td (cl-who:str (or (getf rr :|current_location|) "-")))
-                               (:td :style "color: #666;" (cl-who:str (getf rr :|start_date|))))))))))
+                               (:td :style "color: #666;" (cl-who:str (format-date-display (getf rr :|start_date|)))))))))))
                    (cl-who:htm
                     (:p :style "color: #666; margin: 10px 0;" "No return flights this month.")))
                
