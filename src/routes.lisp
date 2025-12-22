@@ -82,7 +82,9 @@
           (:li (:a :href "/inventory" "Inventory"))
           (:li (:a :href "/mrf" "MRF"))
           (:li (:a :href "/rr" "R&R"))
-          (:li (:a :href "/master-tracker" "Master Tracker"))
+          (when (and user (user-can-access-master-tracker-p user))
+            (cl-who:htm
+             (:li (:a :href "/master-tracker" "Master Tracker"))))
           (:li (:a :href "/reports" "Reports"))
           (when (and user (user-is-admin-p user))
             (cl-who:htm
@@ -1903,8 +1905,21 @@
 
 ;;; Master Tracker Handlers
 
+(defun user-can-access-master-tracker-p (user)
+  "Check if user can access Master Tracker (Admin, QC Manager, Program Manager, QC, AO Lead)."
+  (when user
+    (let ((role (string-downcase (or (getf user :|role|) ""))))
+      (or (user-is-admin-p user)
+          (string= role "qc_manager")
+          (string= role "program_manager")
+          (string= role "qc")
+          (string= role "ao_lead")))))
+
 (defun handle-master-tracker ()
   "Master Tracker dashboard with filtering by country and camp."
+  (let ((user (get-current-user)))
+    (unless (user-can-access-master-tracker-p user)
+      (return-from handle-master-tracker (redirect-to "/unauthorized"))))
   (let* ((country-id (parse-int (get-param "country")))
          (camp-id (parse-int (get-param "camp")))
          (status-filter (get-param "status"))
@@ -2053,6 +2068,9 @@
 
 (defun handle-weekly-report ()
   "Generate weekly report for client updates (Mon-Sat)."
+  (let ((user (get-current-user)))
+    (unless (user-can-access-master-tracker-p user)
+      (return-from handle-weekly-report (redirect-to "/unauthorized"))))
   (let* ((week-start (get-param "week_start"))
          (week-end (get-param "week_end"))
          (generate-p (get-param "generate"))
