@@ -617,3 +617,79 @@
                             (:td (cl-who:str (getf item :|issued_qty|)))
                             (:td (cl-who:str (getf item :|current_qty|))))))))))))))
         (redirect-to "/irp"))))
+
+;;; Site Activity Report (SAR) Handlers
+
+(defun user-can-generate-sar-p (user)
+  "Check if user can generate SAR (Admin, AO Lead, PMO)."
+  (when user
+    (let ((role (string-downcase (or (getf user :|role|) ""))))
+      (or (user-is-admin-p user)
+          (string= role "ao_lead")
+          (string= role "pmo")
+          (string= role "program_manager")
+          (string= role "project_manager")))))
+
+(defun handle-sar-form ()
+  "Display SAR generation form."
+  (let ((user (get-current-user)))
+    (if (and user (user-can-generate-sar-p user))
+        (let ((today (multiple-value-bind (sec min hour day month year)
+                         (decode-universal-time (get-universal-time))
+                       (declare (ignore sec min hour))
+                       (format nil "~4,'0D-~2,'0D-~2,'0D" year month day))))
+          (html-response
+           (render-page "Site Activity Report"
+             (cl-who:with-html-output-to-string (s)
+               (:div :class "page-header"
+                 (:h1 "Site Activity Report (SAR)")
+                 (:a :href "/" :class "btn" "Back to Dashboard"))
+               (:section :class "card"
+                 (:h2 "Generate Consolidated Report")
+                 (:p "Generate a multi-page PDF report showing all inspection activity across all sites for a given date.")
+                 (:form :method "get" :action "/sar/generate" :class "form-inline"
+                   (:div :class "form-group"
+                     (:label "Report Date")
+                     (:input :type "date" :name "date" :required t :value today))
+                   (:button :type "submit" :class "btn btn-primary" "Generate SAR PDF")))))))
+        (redirect-to "/unauthorized"))))
+
+(defun handle-sar-generate ()
+  "Generate and serve SAR PDF."
+  (let ((user (get-current-user)))
+    (if (and user (user-can-generate-sar-p user))
+        (let* ((report-date (or (get-param "date")
+                                (multiple-value-bind (sec min hour day month year)
+                                    (decode-universal-time (get-universal-time))
+                                  (declare (ignore sec min hour))
+                                  (format nil "~4,'0D-~2,'0D-~2,'0D" year month day))))
+               (python-path "/home/glenn/Notes/org/TFS/CMMS/.venv/bin/python3")
+               (script-path (namestring (merge-pathnames "scripts/generate_sar_pdf.py" *base-directory*)))
+               (reports-dir (namestring (merge-pathnames "reports/sar/" *base-directory*))))
+          ;; Ensure directory exists
+          (ensure-directories-exist (merge-pathnames "reports/sar/" *base-directory*))
+          ;; Generate PDF
+          (uiop:run-program (list python-path script-path report-date reports-dir)
+                            :output t :error-output t)
+          ;; Build filename
+          (let* ((date-part (if (and report-date (>= (length report-date) 10))
+                                (let* ((year (subseq report-date 2 4))
+                                       (month-num (parse-integer (subseq report-date 5 7)))
+                                       (day (subseq report-date 8 10))
+                                       (month-abbrev (nth (1- month-num) '("JAN" "FEB" "MAR" "APR" "MAY" "JUN" 
+                                                                            "JUL" "AUG" "SEP" "OCT" "NOV" "DEC"))))
+                                  (format nil "~A-~A-~A" day month-abbrev year))
+                                "NODATE"))
+                 (filename (format nil "DAR_ALL_SITES_~A.pdf" date-part))
+                 (filepath (merge-pathnames filename (merge-pathnames "reports/sar/" *base-directory*))))
+            (if (probe-file filepath)
+                (progn
+                  (setf (hunchentoot:content-type*) "application/pdf")
+                  (setf (hunchentoot:header-out :content-disposition)
+                        (format nil "attachment; filename=\"~A\"" filename))
+                  (with-open-file (stream filepath :element-type '(unsigned-byte 8))
+                    (let ((buffer (make-array (file-length stream) :element-type '(unsigned-byte 8))))
+                      (read-sequence buffer stream)
+                      buffer)))
+                (redirect-to "/sar"))))
+        (redirect-to "/unauthorized"))))

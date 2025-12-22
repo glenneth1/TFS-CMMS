@@ -84,6 +84,9 @@
           (:li (:a :href "/rr" "R&R"))
           (:li (:a :href "/dar" "DAR"))
           (:li (:a :href "/irp" "IRP"))
+          (when (and user (user-can-generate-sar-p user))
+            (cl-who:htm
+             (:li (:a :href "/sar" "SAR"))))
           (when (and user (user-can-access-master-tracker-p user))
             (cl-who:htm
              (:li (:a :href "/master-tracker" "Master Tracker"))))
@@ -2839,6 +2842,12 @@
          (handle-irp-detail (aref groups 0))))
       ((and (eq method :post) (string= uri "/api/irp/create"))
        (handle-api-irp-create))
+      
+      ;; SAR (Site Activity Report) routes
+      ((string= uri "/sar")
+       (handle-sar-form))
+      ((string= uri "/sar/generate")
+       (handle-sar-generate))
       
       ;; API endpoints
       ((and (eq method :post) (string= uri "/api/sites/create"))
