@@ -167,9 +167,13 @@
          (password (get-param "password"))
          (user (authenticate-user username password)))
     (if user
-        (let ((token (create-session (getf user :|id|))))
+        (let ((token (create-session (getf user :|id|)))
+              (must-change (getf user :|must_change_password|)))
           (hunchentoot:set-cookie "session" :value token :path "/" :http-only t)
-          (redirect-to "/"))
+          ;; Check if user must change password
+          (if (and must-change (= must-change 1))
+              (redirect-to "/change-password?required=1")
+              (redirect-to "/")))
         (redirect-to "/login?error=Invalid%20username%20or%20password"))))
 
 (defun handle-logout ()
@@ -189,6 +193,68 @@
          (:h1 "Access Denied")
          (:p "You do not have permission to access this page.")
          (:a :href "/" :class "btn" "Go Home"))))))
+
+(defun handle-change-password ()
+  "Password change page."
+  (let ((user (get-current-user))
+        (required (get-param "required"))
+        (success (get-param "success"))
+        (error-msg (get-param "error")))
+    (if user
+        (html-response
+         (render-page "Change Password"
+           (cl-who:with-html-output-to-string (s)
+             (when required
+               (cl-who:htm
+                (:div :class "alert alert-warning"
+                  (:strong "Password Change Required: ")
+                  "You must change your password before continuing.")))
+             (when success
+               (cl-who:htm
+                (:div :class "alert alert-success" "Password changed successfully.")))
+             (when error-msg
+               (cl-who:htm
+                (:div :class "alert alert-danger" (cl-who:str error-msg))))
+             (:div :class "card" :style "max-width: 500px; margin: 2rem auto;"
+               (:h2 "Change Password")
+               (:form :method "post" :action "/api/change-password"
+                 (:div :class "form-group"
+                   (:label "Current Password")
+                   (:input :type "password" :name "current_password" :required t))
+                 (:div :class "form-group"
+                   (:label "New Password")
+                   (:input :type "password" :name "new_password" :required t :minlength "6"))
+                 (:div :class "form-group"
+                   (:label "Confirm New Password")
+                   (:input :type "password" :name "confirm_password" :required t))
+                 (:div :class "form-actions"
+                   (:button :type "submit" :class "btn btn-primary" "Change Password")
+                   (unless required
+                     (cl-who:htm
+                      (:a :href "/" :class "btn" "Cancel")))))))))
+        (redirect-to "/login"))))
+
+(defun handle-api-change-password ()
+  "Process password change."
+  (let ((user (get-current-user)))
+    (if user
+        (let* ((current-password (get-param "current_password"))
+               (new-password (get-param "new_password"))
+               (confirm-password (get-param "confirm_password"))
+               (user-id (getf user :|id|))
+               (full-user (fetch-one "SELECT * FROM users WHERE id = ?" user-id)))
+          (cond
+            ((not (verify-password current-password (getf full-user :|password_hash|)))
+             (redirect-to "/change-password?error=Current%20password%20is%20incorrect"))
+            ((not (string= new-password confirm-password))
+             (redirect-to "/change-password?error=New%20passwords%20do%20not%20match"))
+            ((< (length new-password) 6)
+             (redirect-to "/change-password?error=Password%20must%20be%20at%20least%206%20characters"))
+            (t
+             (execute-sql "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?"
+                          (hash-password new-password) user-id)
+             (redirect-to "/?msg=Password%20changed%20successfully"))))
+        (redirect-to "/login"))))
 
 ;;; Admin Panel Handlers
 
@@ -391,6 +457,21 @@
                       (:button :type "submit" :class "btn btn-primary" "Save Changes")
                       (:a :href "/admin/users" :class "btn" "Cancel")))
                    
+                   ;; Password change requirement status
+                   (:section :class "card" :style "margin-top: 1rem;"
+                     (:h2 "Password Settings")
+                     (:p :class "text-muted" 
+                         (if (and (getf edit-user :|must_change_password|) 
+                                  (= 1 (getf edit-user :|must_change_password|)))
+                             (cl-who:htm (:span :style "color: orange;" "⚠ User must change password on next login"))
+                             (cl-who:htm (:span :style "color: green;" "✓ No password change required"))))
+                     (when (and (getf edit-user :|must_change_password|) 
+                                (= 1 (getf edit-user :|must_change_password|)))
+                       (cl-who:htm
+                        (:form :method "post" :action (format nil "/api/admin/users/~A/clear-password-flag" user-id)
+                               :style "margin-top: 0.5rem;"
+                          (:button :type "submit" :class "btn btn-sm" "Clear Password Change Requirement")))))
+                   
                    ;; Password reset section
                    (:section :class "card" :style "margin-top: 1rem;"
                      (:h2 "Reset Password")
@@ -402,6 +483,10 @@
                          (:div :class "form-group required"
                            (:label "Confirm Password")
                            (:input :type "password" :name "confirm_password" :required t)))
+                       (:div :class "form-group"
+                         (:label
+                           (:input :type "checkbox" :name "require_change" :value "1" :checked t)
+                           " Require user to change password on next login"))
                        (:button :type "submit" :class "btn btn-danger" "Reset Password"))))))
               (redirect-to "/admin/users")))
         (redirect-to "/unauthorized"))))
@@ -455,12 +540,26 @@
         (user-id (parse-int user-id-str)))
     (if (and current-user (user-is-admin-p current-user))
         (let ((new-password (get-param "new_password"))
-              (confirm-password (get-param "confirm_password")))
+              (confirm-password (get-param "confirm_password"))
+              (require-change (get-param "require_change")))
           (if (string= new-password confirm-password)
               (progn
                 (change-password user-id new-password)
+                ;; Set must_change_password flag if checkbox was checked
+                (when require-change
+                  (execute-sql "UPDATE users SET must_change_password = 1 WHERE id = ?" user-id))
                 (redirect-to (format nil "/admin/users/~A/edit?success=Password%20reset" user-id)))
               (redirect-to (format nil "/admin/users/~A/edit?error=Passwords%20do%20not%20match" user-id))))
+        (redirect-to "/unauthorized"))))
+
+(defun handle-api-admin-clear-password-flag (user-id-str)
+  "Clear must_change_password flag - Admin only."
+  (let ((current-user (get-current-user))
+        (user-id (parse-int user-id-str)))
+    (if (and current-user (user-is-admin-p current-user))
+        (progn
+          (execute-sql "UPDATE users SET must_change_password = 0 WHERE id = ?" user-id)
+          (redirect-to (format nil "/admin/users/~A/edit?success=Password%20change%20requirement%20cleared" user-id)))
         (redirect-to "/unauthorized"))))
 
 (defun handle-admin-settings ()
@@ -2677,6 +2776,10 @@
        (handle-login))
       ((string= uri "/logout")
        (handle-logout))
+      ((string= uri "/change-password")
+       (handle-change-password))
+      ((string= uri "/api/change-password")
+       (handle-api-change-password))
       ((string= uri "/unauthorized")
        (handle-unauthorized))
       ((and (eq method :post) (string= uri "/api/login"))
@@ -2703,6 +2806,10 @@
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/admin/users/(\\d+)/reset-password$" uri)
          (declare (ignore match))
          (handle-api-admin-reset-password (aref groups 0))))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/admin/users/(\\d+)/clear-password-flag$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/admin/users/(\\d+)/clear-password-flag$" uri)
+         (declare (ignore match))
+         (handle-api-admin-clear-password-flag (aref groups 0))))
       ((string= uri "/admin/settings")
        (handle-admin-settings))
       ((and (eq method :post) (string= uri "/api/admin/settings/update"))

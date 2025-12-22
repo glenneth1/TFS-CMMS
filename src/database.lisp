@@ -199,6 +199,7 @@
       bog_date TEXT,
       current_location TEXT,
       staff_category TEXT,
+      must_change_password INTEGER DEFAULT 0,
       active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now')),
       last_login TEXT
@@ -702,6 +703,8 @@
   ;; Seed default system settings
   (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
                 VALUES ('contract_number', 'W912DY24R0043', 'Current contract number for MRF forms')")
+  (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
+                VALUES ('require_password_change_new_users', '0', 'Require new users to change password on first login (0=off, 1=on)')")
   
   (format t "~&Database initialized at ~A~%" *database-path*)
   t)

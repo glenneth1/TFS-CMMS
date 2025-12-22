@@ -13,6 +13,9 @@ reference/
 reports/dar/
 reports/sar/
 
+# Data exports
+data/exports/
+
 # Excel temp files
 ~$*.xlsx
 
