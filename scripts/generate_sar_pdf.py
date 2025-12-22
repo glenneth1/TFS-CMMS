@@ -15,6 +15,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 DB_PATH = os.path.join(PROJECT_DIR, 'data', 'tfs-cmms.db')
 REPORTS_DIR = os.path.join(PROJECT_DIR, 'reports', 'sar')
+STATIC_IMG_DIR = os.path.join(PROJECT_DIR, 'dist', 'static', 'img')
 
 def get_inspection_reports_for_date(report_date):
     """Get all inspection reports submitted on a given date, grouped by site."""
@@ -76,7 +77,7 @@ def generate_sar_filename(report_date):
     date_str = format_date_filename(report_date)
     return f"DAR_ALL_SITES_{date_str}.pdf"
 
-def generate_site_page_html(site_name, reports, report_date):
+def generate_site_page_html(site_name, reports, report_date, army_logo_path, tfs_logo_path):
     """Generate HTML for a single site page."""
     date_display = format_date_display(report_date)
     
@@ -119,15 +120,14 @@ def generate_site_page_html(site_name, reports, report_date):
     <div class="page">
         <div class="header">
             <div class="logo-left">
-                <div class="army-logo">★</div>
-                <div class="usace-text">US Army Corps<br/>of Engineers</div>
+                <img src="file://{army_logo_path}" alt="US Army" class="logo-img">
             </div>
             <div class="title">
                 <h1>Task Force SAFE - CentCOM</h1>
                 <h2>Site Activity Report</h2>
             </div>
             <div class="logo-right">
-                <div class="tfs-logo">TFS</div>
+                <img src="file://{tfs_logo_path}" alt="TFS" class="logo-img">
             </div>
         </div>
         
@@ -162,13 +162,16 @@ def generate_html(sites_data, report_date):
     pages_html = ''
     page_num = 1
     
+    army_logo_path = os.path.join(STATIC_IMG_DIR, 'Army.png')
+    tfs_logo_path = os.path.join(STATIC_IMG_DIR, 'TFS_Logo.png')
+    
     for site_name, reports in sorted(sites_data.items()):
-        pages_html += generate_site_page_html(site_name, reports, report_date)
+        pages_html += generate_site_page_html(site_name, reports, report_date, army_logo_path, tfs_logo_path)
         pages_html += f'<div class="page-number">{page_num}</div>'
         page_num += 1
     
     if not pages_html:
-        pages_html = generate_site_page_html("No Active Sites", [], report_date)
+        pages_html = generate_site_page_html("No Active Sites", [], report_date, army_logo_path, tfs_logo_path)
         pages_html += '<div class="page-number">1</div>'
     
     html = f'''
@@ -204,18 +207,19 @@ def generate_html(sites_data, report_date):
             .logo-left {{
                 display: flex;
                 align-items: center;
-                gap: 5px;
             }}
-            .army-logo {{
-                font-size: 24pt;
-                color: #000;
+            .logo-right {{
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
             }}
-            .usace-text {{
-                font-size: 8pt;
-                font-weight: bold;
+            .logo-img {{
+                height: 60px;
+                width: auto;
             }}
             .title {{
                 text-align: center;
+                flex: 1;
             }}
             .title h1 {{
                 font-size: 18pt;
@@ -226,9 +230,6 @@ def generate_html(sites_data, report_date):
                 font-size: 12pt;
                 margin: 5px 0 0 0;
                 font-weight: normal;
-            }}
-            .logo-right {{
-                text-align: right;
             }}
             .tfs-logo {{
                 font-size: 14pt;
