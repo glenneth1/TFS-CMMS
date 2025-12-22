@@ -112,6 +112,17 @@
     (declare (ignore sec min hour))
     (format nil "~4,'0D-~2,'0D-~2,'0D" year month day)))
 
+(defun format-date-display (date-str)
+  "Format YYYY-MM-DD as DD-MMM-YYYY for display (e.g., 21-DEC-2025)."
+  (if (and date-str (stringp date-str) (>= (length date-str) 10))
+      (let* ((year (subseq date-str 0 4))
+             (month-num (parse-integer (subseq date-str 5 7)))
+             (day (subseq date-str 8 10))
+             (month-abbrev (nth (1- month-num) '("JAN" "FEB" "MAR" "APR" "MAY" "JUN" 
+                                                  "JUL" "AUG" "SEP" "OCT" "NOV" "DEC"))))
+        (format nil "~A-~A-~A" day month-abbrev year))
+      (or date-str "-")))
+
 (defun calculate-accrued-rr (bog-date-str)
   "Calculate accrued R&R days based on BOG date. 30 days per year."
   (when bog-date-str
@@ -625,8 +636,8 @@ function hideRejectModal() {
                                                         (cl-who:str (getf rr :|full_name|))))
                                         (cl-who:htm (cl-who:str (getf rr :|full_name|)))))
                                (:td (cl-who:str (or elec-type "-")))
-                               (:td (cl-who:str (getf rr :|start_date|)))
-                               (:td (cl-who:str (getf rr :|end_date|)))
+                               (:td (cl-who:str (format-date-display (getf rr :|start_date|))))
+                               (:td (cl-who:str (format-date-display (getf rr :|end_date|))))
                                (:td (cl-who:str (getf rr :|total_days|)))
                                (:td (cl-who:str (or (getf rr :|travel_to|) "-")))
                                (:td (cl-who:str (or (getf rr :|travel_from|) "-")))
