@@ -103,7 +103,7 @@
           (apply #'fetch-all sql (reverse params))
           (fetch-all sql)))))
 
-(defun update-user (user-id &key full-name email role electrician-type team-number active)
+(defun update-user (user-id &key full-name email role electrician-type team-number hire-date bog-date active)
   "Update user details."
   (let ((updates '())
         (params '()))
@@ -122,6 +122,12 @@
     ;; team-number can be nil to clear it
     (push "team_number = ?" updates)
     (push team-number params)
+    ;; hire-date can be nil to clear it
+    (push "hire_date = ?" updates)
+    (push hire-date params)
+    ;; bog-date can be nil to clear it
+    (push "bog_date = ?" updates)
+    (push bog-date params)
     (when active
       (push "active = ?" updates)
       (push (if (eq active t) 1 0) params))

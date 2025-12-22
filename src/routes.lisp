@@ -365,6 +365,15 @@
                         (:label "Team Number")
                         (:input :type "text" :name "team_number" :placeholder "e.g., 230"
                                 :value (or (getf edit-user :|team_number|) ""))))
+                    (:div :class "form-row"
+                      (:div :class "form-group"
+                        (:label "Hire Date")
+                        (:input :type "date" :name "hire_date"
+                                :value (or (getf edit-user :|hire_date|) "")))
+                      (:div :class "form-group"
+                        (:label "BOG Date (Boots on Ground)")
+                        (:input :type "date" :name "bog_date"
+                                :value (or (getf edit-user :|bog_date|) ""))))
                     (:div :class "form-group"
                       (:label "Status")
                       (:select :name "active"
@@ -417,6 +426,8 @@
               (role (get-param "role"))
               (electrician-type (get-param "electrician_type"))
               (team-number (get-param "team_number"))
+              (hire-date (get-param "hire_date"))
+              (bog-date (get-param "bog_date"))
               (active (parse-int (get-param "active"))))
           (update-user user-id 
                        :full-name full-name 
@@ -424,6 +435,8 @@
                        :role role 
                        :electrician-type (when (and electrician-type (not (string= electrician-type ""))) electrician-type)
                        :team-number (when (and team-number (not (string= team-number ""))) team-number)
+                       :hire-date (when (and hire-date (not (string= hire-date ""))) hire-date)
+                       :bog-date (when (and bog-date (not (string= bog-date ""))) bog-date)
                        :active (= active 1))
           (redirect-to "/admin/users"))
         (redirect-to "/unauthorized"))))
