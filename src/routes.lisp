@@ -2821,6 +2821,10 @@
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/dar/(\\d+)$" uri)
          (declare (ignore match))
          (handle-dar-detail (aref groups 0))))
+      ((cl-ppcre:scan "^/dar/(\\d+)/pdf$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/dar/(\\d+)/pdf$" uri)
+         (declare (ignore match))
+         (handle-dar-pdf (aref groups 0))))
       ((and (eq method :post) (string= uri "/api/dar/create"))
        (handle-api-dar-create))
       

@@ -351,7 +351,9 @@
              (cl-who:with-html-output-to-string (s)
                (:div :class "page-header"
                  (:h1 (cl-who:fmt "DAR - ~A" (format-date-display (getf dar :|report_date|))))
-                 (:a :href "/dar" :class "btn" "Back to List"))
+                 (:div
+                   (:a :href "/dar" :class "btn" "Back to List")
+                   (:a :href (format nil "/dar/~A/pdf" dar-id) :class "btn btn-primary" "Download PDF")))
                (:section :class "card"
                  (:h2 "Report Details")
                  (:dl :class "detail-list"
@@ -380,6 +382,48 @@
                              (:td (cl-who:str (or (getf act :|activity_time|) "-")))
                              (:td (cl-who:str (or (getf act :|activity_description|) "-")))
                              (:td (cl-who:str (or (getf act :|notes|) "-")))))))))))))))
+        (redirect-to "/dar"))))
+
+(defun handle-dar-pdf (id-str)
+  "Generate and serve DAR PDF."
+  (let* ((user (get-current-user))
+         (dar-id (parse-int id-str))
+         (dar (when dar-id (get-dar-by-id dar-id))))
+    (if (and user dar (user-can-view-dar-p user dar))
+        (let* ((python-path "/home/glenn/Notes/org/TFS/CMMS/.venv/bin/python3")
+               (script-path (namestring (merge-pathnames "scripts/generate_dar_pdf.py" *base-directory*)))
+               (reports-dir (namestring (merge-pathnames "reports/dar/" *base-directory*))))
+          ;; Generate PDF
+          (uiop:run-program (list python-path script-path (write-to-string dar-id) reports-dir)
+                            :output t :error-output t)
+          ;; Build filename
+          (let* ((date-str (getf dar :|report_date|))
+                 (team (getf dar :|team_number|))
+                 (location (getf dar :|camp_location|))
+                 (site-code (cond ((search "ERBIL" (string-upcase (or location ""))) "EAB")
+                                  ((search "GREEN VILLAGE" (string-upcase (or location ""))) "GV")
+                                  ((search "AL ASAD" (string-upcase (or location ""))) "AAS")
+                                  (t (subseq (string-upcase (or location "UNK")) 0 (min 3 (length (or location "UNK")))))))
+                 (date-part (if (and date-str (>= (length date-str) 10))
+                                (let* ((year (subseq date-str 2 4))
+                                       (month-num (parse-integer (subseq date-str 5 7)))
+                                       (day (subseq date-str 8 10))
+                                       (month-abbrev (nth (1- month-num) '("JAN" "FEB" "MAR" "APR" "MAY" "JUN" 
+                                                                            "JUL" "AUG" "SEP" "OCT" "NOV" "DEC"))))
+                                  (format nil "~A~A~A" day month-abbrev year))
+                                "NODATE"))
+                 (filename (format nil "DAR_~A_~A_~A.pdf" site-code date-part team))
+                 (filepath (merge-pathnames filename (merge-pathnames "reports/dar/" *base-directory*))))
+            (if (probe-file filepath)
+                (progn
+                  (setf (hunchentoot:content-type*) "application/pdf")
+                  (setf (hunchentoot:header-out :content-disposition)
+                        (format nil "attachment; filename=\"~A\"" filename))
+                  (with-open-file (stream filepath :element-type '(unsigned-byte 8))
+                    (let ((buffer (make-array (file-length stream) :element-type '(unsigned-byte 8))))
+                      (read-sequence buffer stream)
+                      buffer)))
+                (redirect-to (format nil "/dar/~A" dar-id)))))
         (redirect-to "/dar"))))
 
 ;;; IRP Route Handlers
