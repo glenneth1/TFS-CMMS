@@ -42,7 +42,8 @@
 (defun get-session (token)
   "Get session by token if valid and not expired."
   (fetch-one 
-   "SELECT u.id, u.username, u.full_name, u.role, u.email, s.expires_at
+   "SELECT u.id, u.username, u.full_name, u.role, u.email, u.bog_date, 
+           u.hire_date, u.staff_category, u.current_location, u.team_number, s.expires_at
     FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.session_token = ? 

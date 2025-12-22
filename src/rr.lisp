@@ -125,11 +125,13 @@
 
 (defun calculate-accrued-rr (bog-date-str)
   "Calculate accrued R&R days based on BOG date. 30 days per year."
-  (when bog-date-str
+  (when (and bog-date-str (>= (length bog-date-str) 10))
     (let* ((bog (parse-date-string bog-date-str))
            (now (get-universal-time))
-           (days-employed (/ (- now bog) 86400)))
-      (round (* (/ days-employed 365) 30) 0.1))))
+           (days-employed (/ (- now bog) 86400.0))
+           (accrued (* (/ days-employed 365.0) 30.0)))
+      ;; Round to 1 decimal place
+      (/ (round (* accrued 10)) 10.0))))
 
 (defun calculate-rr-balance (user-id bog-date-str)
   "Calculate R&R balance (accrued minus used)."
@@ -232,7 +234,7 @@
     (when (or (user-is-admin-p user)
               (string= user-role "ao_lead")
               (string= user-role "program_manager")
-              (null staff-category))
+              (string= user-role "pmo"))
       (return-from handle-rr-dashboard (redirect-to "/rr/calendar")))
     
     ;; Personal dashboard for electricians
@@ -257,27 +259,26 @@
       (html-response
        (render-page "R&R Leave Management"
          (cl-who:with-html-output-to-string (s)
-           (:div :class "page-header" :style "display: flex; justify-content: space-between; align-items: center;"
-             (:div
-               (:h1 :style "margin: 0;" "R&R Leave Management")
-               (:p :class "text-muted" :style "margin: 0;" "Rest & Recuperation Leave Requests"))
-             (:a :href "/rr/calendar" :class "btn" "View Calendar"))
+           (:div :class "page-header"
+             (:h1 "R&R Leave Management")
+             (:p :class "text-muted" "Rest & Recuperation Leave Requests"))
          
          ;; Status Cards
-         (:div :class "stats-grid"
-           (:div :class "stat-card"
-             (:div :class "stat-value" (cl-who:fmt "~,1F" (or accrued 0)))
-             (:div :class "stat-label" "Days Accrued"))
-           (:div :class "stat-card"
-             (:div :class "stat-value" :style (if (and balance (< balance 0)) "color: red;" "")
+         (:div :style "display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;"
+           (:div :class "card" :style "text-align: center; padding: 1rem;"
+             (:div :style "font-size: 2rem; font-weight: bold;" (cl-who:fmt "~,1F" (or accrued 0)))
+             (:div :style "color: #666; font-size: 0.9rem;" "Days Accrued"))
+           (:div :class "card" :style "text-align: center; padding: 1rem;"
+             (:div :style (format nil "font-size: 2rem; font-weight: bold;~A" 
+                                  (if (and balance (< balance 0)) " color: red;" ""))
                    (cl-who:fmt "~,1F" (or balance 0)))
-             (:div :class "stat-label" "Days Balance"))
-           (:div :class "stat-card"
-             (:div :class "stat-value" (cl-who:str (length pending-requests)))
-             (:div :class "stat-label" "Pending Requests"))
-           (:div :class "stat-card"
-             (:div :class "stat-value" (cl-who:str (length approved-requests)))
-             (:div :class "stat-label" "Approved Upcoming")))
+             (:div :style "color: #666; font-size: 0.9rem;" "Days Balance"))
+           (:div :class "card" :style "text-align: center; padding: 1rem;"
+             (:div :style "font-size: 2rem; font-weight: bold;" (cl-who:str (length pending-requests)))
+             (:div :style "color: #666; font-size: 0.9rem;" "Pending Requests"))
+           (:div :class "card" :style "text-align: center; padding: 1rem;"
+             (:div :style "font-size: 2rem; font-weight: bold;" (cl-who:str (length approved-requests)))
+             (:div :style "color: #666; font-size: 0.9rem;" "Approved Upcoming")))
          
          ;; Probation Warning
          (when in-probation
@@ -547,16 +548,21 @@ function hideRejectModal() {
                         "July" "August" "September" "October" "November" "December")))
 
 (defun handle-rr-calendar ()
-  "Calendar view of all R&R leave with month filter and travel details."
+  "Calendar view of all R&R leave with month filter and travel details.
+   Only accessible by Admin, AO Lead, Program Manager, PMO."
   (let* ((user (get-current-user))
+         (user-role (getf user :|role|))
          (is-admin (or (user-is-admin-p user)
-                       (string= (getf user :|role|) "ao_lead")))
-         ;; Get month filter from query params
-         (month-param (hunchentoot:parameter "month"))
-         (year-param (hunchentoot:parameter "year"))
-         ;; Default to current month
-         (now (get-universal-time)))
-    (multiple-value-bind (sec min hour day month year)
+                       (string= user-role "ao_lead")
+                       (string= user-role "program_manager")
+                       (string= user-role "pmo"))))
+    ;; Restrict access to admins/managers only
+    (unless is-admin
+      (return-from handle-rr-calendar (redirect-to "/rr")))
+    (let* ((month-param (hunchentoot:parameter "month"))
+           (year-param (hunchentoot:parameter "year"))
+           (now (get-universal-time)))
+      (multiple-value-bind (sec min hour day month year)
         (decode-universal-time now)
       (declare (ignore sec min hour day))
       (let* ((selected-year (if year-param (parse-integer year-param :junk-allowed t) year))
@@ -678,7 +684,7 @@ function hideRejectModal() {
                                                         (t "cap-empty")))
                                    :title (format nil "~A: ~A on leave" date-str count)
                                (:span :class "cap-date" (cl-who:str (subseq date-str 8)))
-                               (:span :class "cap-count" (cl-who:str count)))))))))))))))
+                               (:span :class "cap-count" (cl-who:str count))))))))))))))))
 
 (defun handle-rr-calendar-print ()
   "Printable R&R schedule for admin to book tickets.

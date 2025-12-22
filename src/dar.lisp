@@ -302,19 +302,58 @@
                        " HECP Package Submitted")))
                  (:section :class "card"
                    (:h2 "Activity Record")
-                   (:div :class "form-row"
-                     (:div :class "form-group"
-                       (:label "Time")
-                       (:input :type "time" :name "activity_time[]"))
-                     (:div :class "form-group"
-                       (:label "Activity")
-                       (:input :type "text" :name "activity_desc[]"))
-                     (:div :class "form-group"
-                       (:label "Notes")
-                       (:input :type "text" :name "activity_notes[]"))))
+                   (:p :class "text-muted" "Record your activities throughout the day. Click 'Add Activity' to add more rows.")
+                   (:div :id "activities-container"
+                     (:div :class "activity-row form-row"
+                       (:div :class "form-group" :style "width: 100px;"
+                         (:label "Time")
+                         (:input :type "time" :name "activity_time[]"))
+                       (:div :class "form-group" :style "flex: 2;"
+                         (:label "Activity")
+                         (:input :type "text" :name "activity_desc[]" :placeholder "e.g., TEAM MEETING"))
+                       (:div :class "form-group" :style "flex: 1;"
+                         (:label "Notes")
+                         (:input :type "text" :name "activity_notes[]" :placeholder "Optional notes"))))
+                   (:button :type "button" :class "btn" :onclick "addActivityRow()" "+ Add Activity"))
+                 (:section :class "card"
+                   (:h2 "Reports Submitted to QA/QC")
+                   (:p :class "text-muted" "List any inspection reports submitted today.")
+                   (:div :id "reports-container"
+                     (:div :class "report-row form-row"
+                       (:div :class "form-group" :style "flex: 3;"
+                         (:label "Report TAG ID")
+                         (:input :type "text" :name "report_tag[]" :placeholder "e.g., F797V-B123-001"))
+                       (:div :class "form-group" :style "width: 120px;"
+                         (:label "Submitted?")
+                         (:select :name "report_submitted[]"
+                           (:option :value "1" "Yes")
+                           (:option :value "0" "No")))))
+                   (:button :type "button" :class "btn" :onclick "addReportRow()" "+ Add Report"))
                  (:div :class "form-actions"
                    (:button :type "submit" :class "btn btn-primary" "Submit DAR")
-                   (:a :href "/dar" :class "btn" "Cancel")))))))
+                   (:a :href "/dar" :class "btn" "Cancel"))
+                 (:script :type "text/javascript"
+                   (cl-who:str "
+function addActivityRow() {
+  var container = document.getElementById('activities-container');
+  var row = document.createElement('div');
+  row.className = 'activity-row form-row';
+  row.innerHTML = '<div class=\"form-group\" style=\"width: 100px;\"><input type=\"time\" name=\"activity_time[]\"></div>' +
+                  '<div class=\"form-group\" style=\"flex: 2;\"><input type=\"text\" name=\"activity_desc[]\" placeholder=\"e.g., LUNCH\"></div>' +
+                  '<div class=\"form-group\" style=\"flex: 1;\"><input type=\"text\" name=\"activity_notes[]\" placeholder=\"Optional\"></div>' +
+                  '<button type=\"button\" class=\"btn btn-sm\" onclick=\"this.parentNode.remove()\" style=\"margin-top: 5px;\">Remove</button>';
+  container.appendChild(row);
+}
+function addReportRow() {
+  var container = document.getElementById('reports-container');
+  var row = document.createElement('div');
+  row.className = 'report-row form-row';
+  row.innerHTML = '<div class=\"form-group\" style=\"flex: 3;\"><input type=\"text\" name=\"report_tag[]\" placeholder=\"e.g., F797V-B123-001\"></div>' +
+                  '<div class=\"form-group\" style=\"width: 120px;\"><select name=\"report_submitted[]\"><option value=\"1\">Yes</option><option value=\"0\">No</option></select></div>' +
+                  '<button type=\"button\" class=\"btn btn-sm\" onclick=\"this.parentNode.remove()\" style=\"margin-top: 5px;\">Remove</button>';
+  container.appendChild(row);
+}
+")))))))
         (redirect-to "/unauthorized"))))
 
 (defun handle-api-dar-create ()
@@ -330,10 +369,29 @@
                (site-lead (get-param "site_lead"))
                (toolbox-topic (get-param "toolbox_topic"))
                (attended-safety-brief (string= (get-param "attended_safety_brief") "1"))
-               (hecp-submitted (get-param "hecp_submitted")))
+               (hecp-submitted (get-param "hecp_submitted"))
+               ;; Get arrays of activities and reports
+               (activity-times (hunchentoot:post-parameters* "activity_time[]"))
+               (activity-descs (hunchentoot:post-parameters* "activity_desc[]"))
+               (activity-notes (hunchentoot:post-parameters* "activity_notes[]"))
+               (report-tags (hunchentoot:post-parameters* "report_tag[]"))
+               (report-submitted-flags (hunchentoot:post-parameters* "report_submitted[]")))
           (let ((dar-id (create-dar user-id report-date team-number team-member-name team-mate-name
                                     camp-location site-lead toolbox-topic attended-safety-brief
                                     (and hecp-submitted (string= hecp-submitted "1")))))
+            ;; Add activities
+            (loop for i from 0 below (length activity-times)
+                  for time = (nth i activity-times)
+                  for desc = (nth i activity-descs)
+                  for notes = (nth i activity-notes)
+                  when (and desc (not (string= desc "")))
+                  do (add-dar-activity dar-id time desc notes))
+            ;; Add reports submitted
+            (loop for i from 0 below (length report-tags)
+                  for tag = (nth i report-tags)
+                  for submitted = (nth i report-submitted-flags)
+                  when (and tag (not (string= tag "")))
+                  do (add-dar-report-submitted dar-id tag (string= submitted "1")))
             (update-dar-status dar-id "Submitted")
             (redirect-to (format nil "/dar/~A" dar-id))))
         (redirect-to "/unauthorized"))))
