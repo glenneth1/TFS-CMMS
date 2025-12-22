@@ -915,3 +915,78 @@ th { background: #f0f0f0; font-weight: bold; }
      (list :available (< (or conflicts 0) max-concurrent)
            :conflicts conflicts
            :max_allowed max-concurrent))))
+
+(defun handle-rr-edit (id-str)
+  "Edit R&R request page - Admin/AO Lead/Program Manager only."
+  (let* ((user (get-current-user))
+         (user-role (getf user :|role|))
+         (is-admin (or (user-is-admin-p user)
+                       (string= user-role "ao_lead")
+                       (string= user-role "program_manager")))
+         (request-id (parse-integer id-str :junk-allowed t))
+         (rr (when request-id (get-rr-request request-id))))
+    (if (and is-admin rr)
+        (html-response
+         (render-page "Edit R&R Request"
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 "Edit R&R Request")
+               (:a :href "/rr/calendar" :class "btn" "Back to Calendar"))
+             (:section :class "card" :style "max-width: 600px;"
+               (:h2 (cl-who:str (getf rr :|full_name|)))
+               (:form :method "post" :action (format nil "/api/rr/~A/update" request-id)
+                 (:div :class "form-group"
+                   (:label "Status")
+                   (:select :name "status" :class "form-control"
+                     (:option :value "Pending" :selected (string= (getf rr :|status|) "Pending") "Pending")
+                     (:option :value "Approved" :selected (string= (getf rr :|status|) "Approved") "Approved")
+                     (:option :value "Rejected" :selected (string= (getf rr :|status|) "Rejected") "Rejected")
+                     (:option :value "Completed" :selected (string= (getf rr :|status|) "Completed") "Completed")))
+                 (:div :class "form-group"
+                   (:label "Start Date")
+                   (:input :type "date" :name "start_date" :class "form-control"
+                           :value (getf rr :|start_date|)))
+                 (:div :class "form-group"
+                   (:label "End Date")
+                   (:input :type "date" :name "end_date" :class "form-control"
+                           :value (getf rr :|end_date|)))
+                 (:div :class "form-group"
+                   (:label "Flying To (Destination)")
+                   (:input :type "text" :name "travel_to" :class "form-control"
+                           :value (or (getf rr :|travel_to|) "")
+                           :placeholder "e.g., London, UK"))
+                 (:div :class "form-group"
+                   (:label "Returning From")
+                   (:input :type "text" :name "travel_from" :class "form-control"
+                           :value (or (getf rr :|travel_from|) "")
+                           :placeholder "e.g., London, UK"))
+                 (:div :style "margin-top: 1rem;"
+                   (:button :type "submit" :class "btn btn-primary" "Save Changes")
+                   (:a :href "/rr/calendar" :class "btn" :style "margin-left: 0.5rem;" "Cancel")))))))
+        (redirect-to "/unauthorized"))))
+
+(defun handle-api-rr-update (id-str)
+  "Update R&R request details - Admin/AO Lead/Program Manager only."
+  (let* ((user (get-current-user))
+         (user-id (getf user :|id|))
+         (user-role (getf user :|role|))
+         (is-admin (or (user-is-admin-p user)
+                       (string= user-role "ao_lead")
+                       (string= user-role "program_manager")))
+         (request-id (parse-integer id-str :junk-allowed t))
+         (status (hunchentoot:parameter "status"))
+         (start-date (hunchentoot:parameter "start_date"))
+         (end-date (hunchentoot:parameter "end_date"))
+         (travel-to (hunchentoot:parameter "travel_to"))
+         (travel-from (hunchentoot:parameter "travel_from")))
+    (if is-admin
+        (let* ((start (parse-date-string start-date))
+               (end (parse-date-string end-date))
+               (total-days (1+ (round (/ (- end start) 86400)))))
+          (execute-sql 
+           "UPDATE rr_requests SET status = ?, start_date = ?, end_date = ?, total_days = ?,
+            travel_to = ?, travel_from = ?, reviewed_by = ?, reviewed_at = datetime('now')
+            WHERE id = ?"
+           status start-date end-date total-days travel-to travel-from user-id request-id)
+          (redirect-to "/rr/calendar"))
+        (redirect-to "/unauthorized"))))

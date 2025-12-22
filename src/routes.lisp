@@ -2721,6 +2721,12 @@
        (handle-rr-calendar))
       ((string= uri "/rr/calendar/print")
        (handle-rr-calendar-print))
+      ((string= uri "/rr/annual")
+       (handle-rr-annual-gantt))
+      ((cl-ppcre:scan "^/rr/(\\d+)/edit$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/rr/(\\d+)/edit$" uri)
+         (declare (ignore match))
+         (handle-rr-edit (aref groups 0))))
       
       ((string= uri "/reports")
        (handle-reports))
@@ -2879,6 +2885,10 @@
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/rr/(\\d+)/status$" uri)
          (declare (ignore match))
          (handle-api-rr-status-update (aref groups 0))))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/rr/(\\d+)/update$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/rr/(\\d+)/update$" uri)
+         (declare (ignore match))
+         (handle-api-rr-update (aref groups 0))))
       ((and (eq method :get) (string= uri "/api/rr/check-dates"))
        (handle-api-rr-check-dates))
       
