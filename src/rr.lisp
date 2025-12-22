@@ -429,7 +429,7 @@
                                 (:tr :class (if (>= conflicts max-elec) "row-warning" "")
                                   (:td (cl-who:str (getf req :|full_name|)))
                                   (:td (cl-who:str (or (getf req :|current_location|) "-")))
-                                  (:td (cl-who:str (format nil "~A to ~A" start end)))
+                                  (:td (cl-who:str (format nil "~A to ~A" (format-date-display start) (format-date-display end))))
                                   (:td (cl-who:str (getf req :|total_days|)))
                                   (:td (cl-who:str (or (getf req :|travel_to|) "-")))
                                   (:td 
@@ -466,8 +466,8 @@
                          (:tr
                            (:td (cl-who:str (getf req :|full_name|)))
                            (:td (cl-who:str (format nil "~A to ~A" 
-                                                    (getf req :|start_date|) 
-                                                    (getf req :|end_date|))))
+                                                    (format-date-display (getf req :|start_date|)) 
+                                                    (format-date-display (getf req :|end_date|)))))
                            (:td (cl-who:str (getf req :|total_days|)))
                            (:td (cl-who:str (or (getf req :|travel_to|) "-")))
                            (:td
@@ -494,8 +494,8 @@
                          (:tr
                            (:td (cl-who:str (getf req :|full_name|)))
                            (:td (cl-who:str (format nil "~A to ~A" 
-                                                    (getf req :|start_date|) 
-                                                    (getf req :|end_date|))))
+                                                    (format-date-display (getf req :|start_date|)) 
+                                                    (format-date-display (getf req :|end_date|)))))
                            (:td (cl-who:str (getf req :|total_days|)))
                            (:td (cl-who:str (or (getf req :|travel_to|) "-")))
                            (:td
