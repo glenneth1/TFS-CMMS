@@ -22,5 +22,7 @@
                              (:file "inspection-reports")
                              (:file "auth")
                              (:file "inventory")
+                             (:file "mrf")
+                             (:file "rr")
                              (:file "reports")
                              (:file "routes")))))

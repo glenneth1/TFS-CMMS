@@ -80,11 +80,15 @@
                       (:span :class "notification-badge" (cl-who:str pending-qc))))))
           (:li (:a :href "/sites" "Sites"))
           (:li (:a :href "/inventory" "Inventory"))
+          (:li (:a :href "/mrf" "MRF"))
+          (:li (:a :href "/rr" "R&R"))
           (:li (:a :href "/reports" "Reports"))
           (when (and user (user-is-admin-p user))
             (cl-who:htm
              (:li :class "nav-admin"
-               (:a :href "/admin/users" "Users"))))
+               (:a :href "/admin/users" "Users"))
+             (:li :class "nav-admin"
+               (:a :href "/admin/settings" "Settings"))))
           (when (and user (or (user-is-admin-p user)
                               (string= (string-downcase (or (getf user :|role|) "")) "qc_manager")))
             (cl-who:htm
@@ -338,26 +342,37 @@
                          (:input :type "text" :name "full_name" :required t
                                  :value (getf edit-user :|full_name|))))
                      (:div :class "form-row"
-                       (:div :class "form-group"
-                         (:label "Email")
-                         (:input :type "email" :name "email" 
-                                 :value (or (getf edit-user :|email|) "")))
-                       (:div :class "form-group required"
-                         (:label "Role")
-                         (:select :name "role" :required t
-                           (dolist (r *user-roles*)
-                             (cl-who:htm 
-                              (:option :value r 
-                                       :selected (string= r (getf edit-user :|role|))
-                                       (cl-who:str r)))))))
-                     (:div :class "form-group"
-                       (:label "Status")
-                       (:select :name "active"
-                         (:option :value "1" :selected (= 1 (getf edit-user :|active|)) "Active")
-                         (:option :value "0" :selected (= 0 (getf edit-user :|active|)) "Inactive")))
-                     (:div :class "form-actions"
-                       (:button :type "submit" :class "btn btn-primary" "Save Changes")
-                       (:a :href "/admin/users" :class "btn" "Cancel")))
+                      (:div :class "form-group"
+                        (:label "Email")
+                        (:input :type "email" :name "email" 
+                                :value (or (getf edit-user :|email|) "")))
+                      (:div :class "form-group required"
+                        (:label "Role")
+                        (:select :name "role" :required t
+                          (dolist (r *user-roles*)
+                            (cl-who:htm 
+                             (:option :value r 
+                                      :selected (string= r (getf edit-user :|role|))
+                                      (cl-who:str r)))))))
+                    (:div :class "form-row"
+                      (:div :class "form-group"
+                        (:label "Electrician Type")
+                        (:select :name "electrician_type"
+                          (:option :value "" :selected (null (getf edit-user :|electrician_type|)) "N/A")
+                          (:option :value "Master" :selected (equal "Master" (getf edit-user :|electrician_type|)) "Master Electrician")
+                          (:option :value "Journeyman" :selected (equal "Journeyman" (getf edit-user :|electrician_type|)) "Journeyman")))
+                      (:div :class "form-group"
+                        (:label "Team Number")
+                        (:input :type "text" :name "team_number" :placeholder "e.g., 230"
+                                :value (or (getf edit-user :|team_number|) ""))))
+                    (:div :class "form-group"
+                      (:label "Status")
+                      (:select :name "active"
+                        (:option :value "1" :selected (= 1 (getf edit-user :|active|)) "Active")
+                        (:option :value "0" :selected (= 0 (getf edit-user :|active|)) "Inactive")))
+                    (:div :class "form-actions"
+                      (:button :type "submit" :class "btn btn-primary" "Save Changes")
+                      (:a :href "/admin/users" :class "btn" "Cancel")))
                    
                    ;; Password reset section
                    (:section :class "card" :style "margin-top: 1rem;"
@@ -400,11 +415,15 @@
         (let ((full-name (get-param "full_name"))
               (email (get-param "email"))
               (role (get-param "role"))
+              (electrician-type (get-param "electrician_type"))
+              (team-number (get-param "team_number"))
               (active (parse-int (get-param "active"))))
           (update-user user-id 
                        :full-name full-name 
                        :email email 
                        :role role 
+                       :electrician-type (when (and electrician-type (not (string= electrician-type ""))) electrician-type)
+                       :team-number (when (and team-number (not (string= team-number ""))) team-number)
                        :active (= active 1))
           (redirect-to "/admin/users"))
         (redirect-to "/unauthorized"))))
@@ -421,6 +440,70 @@
                 (change-password user-id new-password)
                 (redirect-to (format nil "/admin/users/~A/edit?success=Password%20reset" user-id)))
               (redirect-to (format nil "/admin/users/~A/edit?error=Passwords%20do%20not%20match" user-id))))
+        (redirect-to "/unauthorized"))))
+
+(defun handle-admin-settings ()
+  "Handle admin settings page."
+  (let ((user (get-current-user)))
+    (if (and user (user-is-admin-p user))
+        (let ((settings (get-all-system-settings))
+              (success (hunchentoot:parameter "success"))
+              (error-msg (hunchentoot:parameter "error")))
+          (html-response
+           (render-page "System Settings"
+             (cl-who:with-html-output-to-string (s)
+               (:div :class "page-header"
+                 (:h1 "System Settings")
+                 (:a :href "/admin/users" :class "btn btn-secondary" "Back to Users"))
+               
+               (when success
+                 (cl-who:htm
+                  (:div :class "alert alert-success" (cl-who:str success))))
+               (when error-msg
+                 (cl-who:htm
+                  (:div :class "alert alert-danger" (cl-who:str error-msg))))
+               
+               (:section :class "card"
+                 (:h2 "Contract Settings")
+                 (:form :method "post" :action "/api/admin/settings/update"
+                   (:div :class "form-group"
+                     (:label "Contract Number")
+                     (:input :type "text" :name "contract_number" 
+                             :value (or (get-system-setting "contract_number") "")
+                             :placeholder "e.g., W912DY24R0043"))
+                   (:p :class "text-muted" "This contract number will be used on all new MRF forms.")
+                   (:button :type "submit" :class "btn btn-primary" "Save Settings")))
+               
+               (:section :class "card" :style "margin-top: 1rem;"
+                 (:h2 "All Settings")
+                 (:table :class "data-table"
+                   (:thead
+                     (:tr
+                       (:th "Setting")
+                       (:th "Value")
+                       (:th "Description")
+                       (:th "Last Updated")))
+                   (:tbody
+                     (if settings
+                         (dolist (setting settings)
+                           (cl-who:htm
+                            (:tr
+                              (:td (:code (cl-who:str (getf setting :|setting_key|))))
+                              (:td (cl-who:str (or (getf setting :|setting_value|) "")))
+                              (:td (cl-who:str (or (getf setting :|description|) "")))
+                              (:td (cl-who:str (or (getf setting :|updated_at|) ""))))))
+                         (cl-who:htm
+                          (:tr (:td :colspan "4" :class "text-center" "No settings configured")))))))))))
+        (redirect-to "/unauthorized"))))
+
+(defun handle-api-admin-settings-update ()
+  "Handle admin settings update."
+  (let ((user (get-current-user)))
+    (if (and user (user-is-admin-p user))
+        (let ((contract-number (hunchentoot:parameter "contract_number")))
+          (when contract-number
+            (set-system-setting "contract_number" contract-number "Current contract number for MRF forms"))
+          (redirect-to "/admin/settings?success=Settings%20updated"))
         (redirect-to "/unauthorized"))))
 
 ;;; Route handlers
@@ -1638,6 +1721,33 @@
                    (cl-who:htm
                     (:p :class "empty-state" "No deficiencies recorded yet."))))
              
+             ;; MRF Section (if MRF Required = Yes)
+             (when (string= "Yes" (getf report :|mrf_needed|))
+               (let ((mrf (get-mrf-by-report report-id)))
+                 (cl-who:htm
+                  (:section :class "card"
+                    (:h2 "Material Request Form (MRF)")
+                    (if mrf
+                        (cl-who:htm
+                         (:dl :class "detail-list"
+                           (:dt "MRF Number") (:dd (cl-who:str (getf mrf :|mrf_number|)))
+                           (:dt "Status") (:dd (:span :class (format nil "badge badge-~A" 
+                                                                      (string-downcase (getf mrf :|status|)))
+                                                      (cl-who:str (getf mrf :|status|))))
+                           (:dt "Items") (:dd (cl-who:str (format nil "~A item(s)" 
+                                                                   (or (getf mrf :|item_count|) 0)))))
+                         (:div :class "page-actions" :style "margin-top: 1rem;"
+                           (:a :href (format nil "/mrf/~A" (getf mrf :|id|))
+                               :class "btn btn-primary" "View/Edit MRF")
+                           (:a :href (format nil "/mrf/~A/print" (getf mrf :|id|))
+                               :class "btn" :target "_blank" "Print MRF")))
+                        (cl-who:htm
+                         (:p :class "text-muted" "MRF not yet generated.")
+                         (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)
+                           (cl-who:htm
+                            (:form :method "post" :action (format nil "/api/inspection-reports/~A/generate-mrf" report-id)
+                              (:button :type "submit" :class "btn btn-primary" "Generate MRF"))))))))))
+             
              ;; QC Section
              (:section :class "card"
                (:h2 "Signatures & QC")
@@ -2257,6 +2367,11 @@
                               :overall-rating overall-rating
                               :mrf-needed mrf-needed
                               :summary-of-findings summary-of-findings)
+    ;; Auto-generate MRF if MRF Required = Yes and no MRF exists yet
+    (when (and mrf-needed (string= mrf-needed "Yes"))
+      (let ((existing-mrf (get-mrf-by-report report-id)))
+        (unless existing-mrf
+          (create-mrf-from-inspection report-id))))
     (redirect-to (format nil "/inspection-reports/~A" report-id))))
 
 (defun handle-api-inspection-report-building-image (id)
@@ -2550,6 +2665,10 @@
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/admin/users/(\\d+)/reset-password$" uri)
          (declare (ignore match))
          (handle-api-admin-reset-password (aref groups 0))))
+      ((string= uri "/admin/settings")
+       (handle-admin-settings))
+      ((and (eq method :post) (string= uri "/api/admin/settings/update"))
+       (handle-api-admin-settings-update))
       
       ;; Pages
       ((string= uri "/")
@@ -2565,22 +2684,44 @@
       ((string= uri "/sites")
        (handle-sites))
       ((string= uri "/inventory")
-       (html-response
-        (render-page "Inventory"
-          (cl-who:with-html-output-to-string (s)
-            (:div :class "page-header"
-              (:h1 "Inventory Management"))
-            (:div :class "card"
-              (:div :class "empty-state"
-                (:h2 "Coming Soon")
-                (:p "Inventory management features are under development.")
-                (:p "This module will include:")
-                (:ul
-                  (:li "Spare parts tracking")
-                  (:li "Stock levels and reorder alerts")
-                  (:li "Equipment catalog")
-                  (:li "Supplier management"))
-                (:a :href "/" :class "btn" "Back to Dashboard")))))))
+       (handle-inventory))
+      ((string= uri "/inventory/locations")
+       (handle-inventory-locations))
+      ((cl-ppcre:scan "^/inventory/item/(\\d+)$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/inventory/item/(\\d+)$" uri)
+         (declare (ignore match))
+         (handle-inventory-item-detail (aref groups 0))))
+      ((string= uri "/inventory/audit/new")
+       (handle-inventory-audit-new))
+      ((cl-ppcre:scan "^/inventory/audit/(\\d+)$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/inventory/audit/(\\d+)$" uri)
+         (declare (ignore match))
+         (handle-inventory-audit-detail (aref groups 0))))
+      
+      ;; MRF Routes
+      ((string= uri "/mrf")
+       (handle-mrf-list))
+      ((string= uri "/mrf/new")
+       (handle-mrf-new))
+      ((cl-ppcre:scan "^/mrf/(\\d+)/print$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/mrf/(\\d+)/print$" uri)
+         (declare (ignore match))
+         (handle-mrf-print (aref groups 0))))
+      ((cl-ppcre:scan "^/mrf/(\\d+)$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/mrf/(\\d+)$" uri)
+         (declare (ignore match))
+         (handle-mrf-detail (aref groups 0))))
+      
+      ;; R&R Routes
+      ((string= uri "/rr")
+       (handle-rr-dashboard))
+      ((string= uri "/rr/approve")
+       (handle-rr-approval-queue))
+      ((string= uri "/rr/calendar")
+       (handle-rr-calendar))
+      ((string= uri "/rr/calendar/print")
+       (handle-rr-calendar-print))
+      
       ((string= uri "/reports")
        (handle-reports))
       
@@ -2683,6 +2824,12 @@
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/inspection-reports/(\\d+)/deficiency$" uri)
          (declare (ignore match))
          (handle-api-deficiency-create (aref groups 0))))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/inspection-reports/(\\d+)/generate-mrf$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/inspection-reports/(\\d+)/generate-mrf$" uri)
+         (declare (ignore match))
+         (let ((report-id (parse-int (aref groups 0))))
+           (create-mrf-from-inspection report-id)
+           (redirect-to (format nil "/inspection-reports/~A" report-id)))))
       ((and (eq method :post) (cl-ppcre:scan "^/api/deficiency/(\\d+)/delete$" uri))
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/deficiency/(\\d+)/delete$" uri)
          (declare (ignore match))
@@ -2700,6 +2847,40 @@
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/inspection-reports/(\\d+)/generate-pdf$" uri)
          (declare (ignore match))
          (handle-api-generate-pdf (aref groups 0))))
+      
+      ;; MRF API endpoints
+      ((and (eq method :post) (string= uri "/api/mrf/create"))
+       (handle-api-mrf-create))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/mrf/(\\d+)/item$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/mrf/(\\d+)/item$" uri)
+         (declare (ignore match))
+         (handle-api-mrf-add-item (aref groups 0))))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/mrf/(\\d+)/item/(\\d+)/delete$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/mrf/(\\d+)/item/(\\d+)/delete$" uri)
+         (declare (ignore match))
+         (handle-api-mrf-delete-item (aref groups 0) (aref groups 1))))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/mrf/(\\d+)/submit$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/mrf/(\\d+)/submit$" uri)
+         (declare (ignore match))
+         (handle-api-mrf-submit (aref groups 0))))
+      
+      ;; R&R API endpoints
+      ((and (eq method :post) (string= uri "/api/rr/request"))
+       (handle-api-rr-request))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/rr/(\\d+)/approve$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/rr/(\\d+)/approve$" uri)
+         (declare (ignore match))
+         (handle-api-rr-approve (aref groups 0))))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/rr/(\\d+)/reject$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/rr/(\\d+)/reject$" uri)
+         (declare (ignore match))
+         (handle-api-rr-reject (aref groups 0))))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/rr/(\\d+)/status$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/rr/(\\d+)/status$" uri)
+         (declare (ignore match))
+         (handle-api-rr-status-update (aref groups 0))))
+      ((and (eq method :get) (string= uri "/api/rr/check-dates"))
+       (handle-api-rr-check-dates))
       
       ;; 404
       (t

@@ -1050,3 +1050,178 @@ input[type="file"] {
   color: #ffc107 !important;
   font-weight: 500;
 }
+
+/* Modal */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 500px;
+  width: 90%;
+}
+
+.modal-content h3 {
+  margin-bottom: 1rem;
+}
+
+/* Row highlighting for R&R */
+.row-warning {
+  background-color: #fff3cd !important;
+}
+
+.row-danger {
+  background-color: #f8d7da !important;
+}
+
+/* Alert messages */
+.alert {
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.alert-warning {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  color: #856404;
+}
+
+.alert-danger {
+  background: #f8d7da;
+  border: 1px solid #dc3545;
+  color: #721c24;
+}
+
+.alert-success {
+  background: #d4edda;
+  border: 1px solid #28a745;
+  color: #155724;
+}
+
+/* R&R Calendar Styles */
+.rr-legend {
+  padding: 0.5rem 1rem;
+  background: var(--gray-50);
+  border-radius: 4px;
+}
+
+.legend-box {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.legend-box.master {
+  background: #2563eb;
+}
+
+.legend-box.journeyman {
+  background: #16a34a;
+}
+
+.legend-box.pending {
+  background: #ffc107;
+}
+
+/* R&R Table Row Colors */
+.rr-master {
+  background-color: rgba(37, 99, 235, 0.1) !important;
+  border-left: 4px solid #2563eb;
+}
+
+.rr-journeyman {
+  background-color: rgba(22, 163, 74, 0.1) !important;
+  border-left: 4px solid #16a34a;
+}
+
+.rr-pending {
+  background-color: rgba(255, 193, 7, 0.2) !important;
+  border-left: 4px solid #ffc107;
+}
+
+.gantt-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gantt-table th,
+.gantt-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.gantt-table th {
+  background: var(--gray-100);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.status-select {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--gray-300);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+/* Capacity Grid */
+.capacity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  gap: 4px;
+}
+
+.capacity-day {
+  padding: 4px;
+  text-align: center;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: default;
+}
+
+.capacity-day .cap-date {
+  display: block;
+  font-weight: 600;
+}
+
+.capacity-day .cap-count {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.cap-empty {
+  background: var(--gray-100);
+  color: var(--gray-500);
+}
+
+.cap-ok {
+  background: #d4edda;
+  color: #155724;
+}
+
+.cap-warn {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.cap-full {
+  background: #f8d7da;
+  color: #721c24;
+}
