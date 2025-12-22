@@ -137,6 +137,11 @@ def generate_html(data):
             @page {{
                 size: A4;
                 margin: 1.5cm;
+                @top-center {{
+                    content: "TF SAFE CMMS - Report";
+                    font-size: 8pt;
+                    color: #666666;
+                }}
             }}
             body {{
                 font-family: Arial, sans-serif;

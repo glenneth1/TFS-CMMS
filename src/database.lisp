@@ -705,6 +705,15 @@
                 VALUES ('contract_number', 'W912DY24R0043', 'Current contract number for MRF forms')")
   (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
                 VALUES ('require_password_change_new_users', '0', 'Require new users to change password on first login (0=off, 1=on)')")
+  ;; Contract period settings for week-based reporting
+  (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
+                VALUES ('contract_base_year_start', '2025-01-14', 'Base Year contract start date (YYYY-MM-DD)')")
+  (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
+                VALUES ('contract_base_year_end', '2026-01-03', 'Base Year contract end date (YYYY-MM-DD)')")
+  (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
+                VALUES ('contract_option_year_start', '2026-01-04', 'Option Year contract start date (YYYY-MM-DD)')")
+  (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
+                VALUES ('contract_current_period', 'BY', 'Current contract period: BY (Base Year), OY (Option Year), EX (Extension)')")
   
   (format t "~&Database initialized at ~A~%" *database-path*)
   t)
@@ -726,3 +735,142 @@
 (defun get-all-system-settings ()
   "Get all system settings."
   (fetch-all "SELECT * FROM system_settings ORDER BY setting_key"))
+
+;;; Contract Week Calculation Functions
+(defun parse-date-to-universal (date-str)
+  "Parse YYYY-MM-DD string to universal time."
+  (when (and date-str (>= (length date-str) 10))
+    (let ((year (parse-integer (subseq date-str 0 4)))
+          (month (parse-integer (subseq date-str 5 7)))
+          (day (parse-integer (subseq date-str 8 10))))
+      (encode-universal-time 0 0 12 day month year 0))))
+
+(defun universal-to-date-str (universal-time)
+  "Convert universal time to YYYY-MM-DD string."
+  (multiple-value-bind (sec min hour day month year)
+      (decode-universal-time universal-time 0)
+    (declare (ignore sec min hour))
+    (format nil "~4,'0D-~2,'0D-~2,'0D" year month day)))
+
+(defun get-day-of-week (universal-time)
+  "Get day of week (0=Monday, 6=Sunday) for a universal time."
+  (nth-value 6 (decode-universal-time universal-time 0)))
+
+(defun get-contract-week-info (date-str)
+  "Calculate contract week number and period for a given date.
+   Returns plist with :week-number :period :week-start :week-end or NIL if outside contract."
+  (let* ((by-start-str (get-system-setting "contract_base_year_start"))
+         (by-end-str (get-system-setting "contract_base_year_end"))
+         (oy-start-str (get-system-setting "contract_option_year_start"))
+         (target-date (parse-date-to-universal date-str)))
+    (when (and by-start-str target-date)
+      (let* ((by-start (parse-date-to-universal by-start-str))
+             (by-end (when by-end-str (parse-date-to-universal by-end-str)))
+             (oy-start (when oy-start-str (parse-date-to-universal oy-start-str))))
+        ;; Determine which period the date falls into
+        (cond
+          ;; Base Year
+          ((and by-start by-end
+                (>= target-date by-start)
+                (<= target-date by-end))
+           (calculate-week-from-start by-start target-date "BY"))
+          ;; Option Year
+          ((and oy-start (>= target-date oy-start))
+           (calculate-week-from-start oy-start target-date "OY"))
+          ;; Before contract start
+          (t nil))))))
+
+(defun calculate-week-from-start (contract-start target-date period)
+  "Calculate week number from contract start date.
+   Week 1 starts on contract start, ends on following Sunday.
+   Subsequent weeks run Monday to Sunday."
+  (let* ((days-since-start (floor (/ (- target-date contract-start) 86400)))
+         ;; Get day of week for contract start (0=Mon, 6=Sun)
+         (start-dow (get-day-of-week contract-start))
+         ;; Days until first Sunday (6=Sun in our 0=Mon system)
+         ;; In CL decode-universal-time: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+         (days-to-first-sunday (mod (- 6 start-dow) 7))
+         ;; Week 1 length (contract start to first Sunday inclusive)
+         (week-1-length (1+ days-to-first-sunday)))
+    (cond
+      ;; Still in week 1
+      ((< days-since-start week-1-length)
+       (let ((week-end (+ contract-start (* days-to-first-sunday 86400))))
+         (list :week-number 1
+               :period period
+               :week-start (universal-to-date-str contract-start)
+               :week-end (universal-to-date-str week-end))))
+      ;; Week 2 onwards (7-day weeks, Monday to Sunday)
+      (t
+       (let* ((days-after-week-1 (- days-since-start week-1-length))
+              (week-number (+ 2 (floor days-after-week-1 7)))
+              (week-offset (mod days-after-week-1 7))
+              ;; Week start is the Monday after week 1
+              (week-2-start (+ contract-start (* week-1-length 86400)))
+              (current-week-start (+ week-2-start (* (floor days-after-week-1 7) 7 86400)))
+              (current-week-end (+ current-week-start (* 6 86400))))
+         (list :week-number week-number
+               :period period
+               :week-start (universal-to-date-str current-week-start)
+               :week-end (universal-to-date-str current-week-end)))))))
+
+(defun get-date-range-for-contract-week (period week-number)
+  "Get the date range (start, end) for a specific contract week.
+   Week 1 ends on first Sunday, subsequent weeks are Monday-Sunday.
+   Returns plist with :week-start :week-end or NIL."
+  (let* ((start-key (cond ((string= period "BY") "contract_base_year_start")
+                          ((string= period "OY") "contract_option_year_start")
+                          (t "contract_base_year_start")))
+         (contract-start-str (get-system-setting start-key))
+         (contract-start (when contract-start-str (parse-date-to-universal contract-start-str))))
+    (when contract-start
+      (let* ((start-dow (get-day-of-week contract-start))
+             (days-to-first-sunday (mod (- 6 start-dow) 7))
+             (week-1-length (1+ days-to-first-sunday)))
+        (if (= week-number 1)
+            ;; Week 1: contract start to first Sunday
+            (list :week-start contract-start-str
+                  :week-end (universal-to-date-str (+ contract-start (* days-to-first-sunday 86400))))
+            ;; Week 2+: calculate from week 2 start (Monday after first Sunday)
+            (let* ((week-2-start (+ contract-start (* week-1-length 86400)))
+                   (weeks-offset (- week-number 2))
+                   (week-start (+ week-2-start (* weeks-offset 7 86400)))
+                   (week-end (+ week-start (* 6 86400))))
+              (list :week-start (universal-to-date-str week-start)
+                    :week-end (universal-to-date-str week-end))))))))
+
+(defun get-available-contract-weeks (period)
+  "Get list of available contract weeks for a period up to current date.
+   Returns list of plists with :week-number :week-start :week-end."
+  (let* ((start-key (cond ((string= period "BY") "contract_base_year_start")
+                          ((string= period "OY") "contract_option_year_start")
+                          (t "contract_base_year_start")))
+         (end-key (cond ((string= period "BY") "contract_base_year_end")
+                        (t nil)))
+         (contract-start-str (get-system-setting start-key))
+         (contract-end-str (when end-key (get-system-setting end-key)))
+         (contract-start (when contract-start-str (parse-date-to-universal contract-start-str)))
+         (contract-end (when contract-end-str (parse-date-to-universal contract-end-str)))
+         (today (get-universal-time))
+         (end-date (if (and contract-end (< contract-end today)) contract-end today))
+         (weeks '()))
+    (when contract-start
+      (let* ((start-dow (get-day-of-week contract-start))
+             (days-to-first-sunday (mod (- 6 start-dow) 7))
+             (week-1-end (+ contract-start (* days-to-first-sunday 86400))))
+        ;; Add week 1
+        (push (list :week-number 1
+                    :week-start contract-start-str
+                    :week-end (universal-to-date-str week-1-end))
+              weeks)
+        ;; Add subsequent weeks (Monday to Sunday)
+        (let ((week-start (+ week-1-end 86400))) ; Start of week 2 (Monday after first Sunday)
+          (loop for week-num from 2
+                while (<= week-start end-date)
+                do (let ((week-end (+ week-start (* 6 86400))))
+                     (push (list :week-number week-num
+                                 :week-start (universal-to-date-str week-start)
+                                 :week-end (universal-to-date-str week-end))
+                           weeks)
+                     (setf week-start (+ week-end 86400)))))))
+    (nreverse weeks)))

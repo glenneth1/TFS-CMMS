@@ -196,7 +196,10 @@
          (user-id (when user (getf user :|id|)))
          (team-filter (get-param "team"))
          (date-from (get-param "date_from"))
-         (date-to (get-param "date_to")))
+         (date-to (get-param "date_to"))
+         (contract-week (get-param "contract_week"))
+         (current-period (or (get-system-setting "contract_current_period") "BY"))
+         (available-weeks (get-available-contract-weeks current-period)))
     (if user
         (let* ((is-electrician (or (string= role "electrician")
                                    (string= role "master_electrician")
@@ -214,6 +217,45 @@
                  (when is-electrician
                    (cl-who:htm
                     (:a :href "/dar/new" :class "btn btn-primary" "+ New DAR"))))
+               ;; Filter form
+               (:section :class "card" :style "margin-bottom: 1rem;"
+                 (:h3 "Filter by Date Range")
+                 (:form :method "get" :action "/dar"
+                   (:div :class "form-row"
+                     (:div :class "form-group"
+                       (:label "Contract Week")
+                       (:select :name "contract_week" :id "dar-contract-week" :onchange "updateDarDatesFromWeek()"
+                         (:option :value "" "-- Select Week --")
+                         (dolist (week available-weeks)
+                           (cl-who:htm
+                            (:option :value (format nil "~A-~A" current-period (getf week :week-number))
+                                     :data-start (getf week :week-start)
+                                     :data-end (getf week :week-end)
+                                     :selected (string= contract-week (format nil "~A-~A" current-period (getf week :week-number)))
+                                     (cl-who:fmt "~A Week ~A (~A to ~A)" 
+                                                 current-period 
+                                                 (getf week :week-number)
+                                                 (getf week :week-start)
+                                                 (getf week :week-end)))))))
+                     (:div :class "form-group"
+                       (:label "From Date")
+                       (:input :type "date" :name "date_from" :id "dar-date-from" :value (or date-from "")))
+                     (:div :class "form-group"
+                       (:label "To Date")
+                       (:input :type "date" :name "date_to" :id "dar-date-to" :value (or date-to "")))
+                     (:div :class "form-group" :style "align-self: flex-end;"
+                       (:button :type "submit" :class "btn btn-primary" "Filter")
+                       (:a :href "/dar" :class "btn" :style "margin-left: 0.5rem;" "Clear"))))
+                 (:script "
+function updateDarDatesFromWeek() {
+  var select = document.getElementById('dar-contract-week');
+  var option = select.options[select.selectedIndex];
+  if (option.value) {
+    document.getElementById('dar-date-from').value = option.dataset.start;
+    document.getElementById('dar-date-to').value = option.dataset.end;
+  }
+}
+"))
                (:section :class "card"
                  (:table :class "data-table"
                    (:thead

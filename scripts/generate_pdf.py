@@ -343,7 +343,7 @@ def create_summary_section(report_data):
     return elements
 
 class NumberedCanvas(canvas.Canvas):
-    """Canvas that tracks page count for 'Page X of Y' numbering."""
+    """Canvas that tracks page count for 'Page X of Y' numbering and adds header."""
     def __init__(self, *args, **kwargs):
         canvas.Canvas.__init__(self, *args, **kwargs)
         self._saved_page_states = []
@@ -356,9 +356,18 @@ class NumberedCanvas(canvas.Canvas):
         num_pages = len(self._saved_page_states)
         for state in self._saved_page_states:
             self.__dict__.update(state)
+            self.draw_header()
             self.draw_page_number(num_pages)
             canvas.Canvas.showPage(self)
         canvas.Canvas.save(self)
+
+    def draw_header(self):
+        """Draw 'TF SAFE CMMS - Report' header at top of each page."""
+        self.saveState()
+        self.setFont('Helvetica', 8)
+        self.setFillColor(colors.HexColor('#666666'))
+        self.drawCentredString(PAGE_WIDTH / 2, PAGE_HEIGHT - 0.25 * inch, "TF SAFE CMMS - Report")
+        self.restoreState()
 
     def draw_page_number(self, page_count):
         self.setFont('Helvetica', 8)

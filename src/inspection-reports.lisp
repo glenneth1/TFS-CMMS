@@ -468,7 +468,15 @@
          (new-date (or inspection-date (getf original :|inspection_date|)))
          (site-code (getf original :|site_code|))
          (building-number (getf original :|building_number|))
-         (date-formatted (format-date-for-report new-date)))
+         (date-formatted (format-date-for-report new-date))
+         ;; Find unique report number by checking for existing ones
+         (base-report-number (format nil "Re-Inspection-Report_TFSAFE_~A_~A_~A_~A" 
+                                     site-code building-number new-team date-formatted))
+         (existing-count (getf (fetch-one 
+                                "SELECT COUNT(*) as cnt FROM inspection_reports WHERE report_number LIKE ?"
+                                (concatenate 'string base-report-number "%"))
+                               :|cnt|))
+         (report-number (format nil "~A_0-~A" base-report-number (1+ existing-count))))
     ;; Create the new report
     (execute-sql 
      "INSERT INTO inspection_reports 
@@ -489,8 +497,7 @@
      new-team
      new-date
      "Draft"
-     (format nil "Re-Inspection-Report_TFSAFE_~A_~A_~A_~A_0" 
-             site-code building-number new-team date-formatted))
+     report-number)
     ;; Get the new report ID
     (let ((new-report-id (getf (fetch-one "SELECT last_insert_rowid() as id") :|id|)))
       ;; Copy all deficiencies from original report
