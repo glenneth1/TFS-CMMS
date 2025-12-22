@@ -189,10 +189,9 @@
     (html-response
      (render-page "Material Request Forms"
        (cl-who:with-html-output-to-string (s)
-         (:div :class "page-header" :style "margin-bottom: 1rem;"
-           (:div :style "display: flex; justify-content: space-between; align-items: center;"
-             (:h1 :style "margin: 0;" "Material Request Forms")
-             (:a :href "/mrf/new" :class "btn btn-primary" "New MRF")))
+         (:div :style "display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"
+           (:h1 :style "margin: 0;" "Material Request Forms")
+           (:a :href "/mrf/new" :class "btn btn-primary" "New MRF"))
          
          ;; Filter by status
          (:div :class "card" :style "padding: 0.75rem; margin-bottom: 1rem;"
