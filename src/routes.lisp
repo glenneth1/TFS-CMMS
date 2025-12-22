@@ -491,7 +491,8 @@
                               (:td (:code (cl-who:str (getf setting :|setting_key|))))
                               (:td (cl-who:str (or (getf setting :|setting_value|) "")))
                               (:td (cl-who:str (or (getf setting :|description|) "")))
-                              (:td (cl-who:str (or (getf setting :|updated_at|) ""))))))
+                              (:td (cl-who:str (let ((dt (or (getf setting :|updated_at|) "")))
+                                        (if (>= (length dt) 10) (format-date-display (subseq dt 0 10)) dt)))))))
                          (cl-who:htm
                           (:tr (:td :colspan "4" :class "text-center" "No settings configured")))))))))))
         (redirect-to "/unauthorized"))))
@@ -917,7 +918,7 @@
                         (dolist (act activities)
                           (cl-who:htm
                            (:tr
-                             (:td (cl-who:str (or (getf act :|activity_date|) "-")))
+                             (:td (cl-who:str (format-date-display (getf act :|activity_date|))))
                              (:td (:span :class "badge" (cl-who:str (or (getf act :|activity_type|) "-"))))
                              (:td (cl-who:str (or (getf act :|performed_by|) "-")))
                              (:td (cl-who:str (or (getf act :|description|) "-")))
