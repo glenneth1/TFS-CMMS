@@ -1546,6 +1546,22 @@ function updateDatesFromWeek() {
          (declare (ignore match))
          (handle-api-perstat-personnel-update (aref groups 0))))
       
+      ;; AMR (Air Movement Request) routes
+      ((string= uri "/perstat/amr")
+       (handle-amr-list))
+      ((string= uri "/perstat/amr/new")
+       (handle-amr-new))
+      ((cl-ppcre:scan "^/perstat/amr/(\\d+)/print$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/perstat/amr/(\\d+)/print$" uri)
+         (declare (ignore match))
+         (handle-amr-print (aref groups 0))))
+      ((cl-ppcre:scan "^/perstat/amr/(\\d+)$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/perstat/amr/(\\d+)$" uri)
+         (declare (ignore match))
+         (handle-amr-detail (aref groups 0))))
+      ((and (eq method :post) (string= uri "/api/perstat/amr/create"))
+       (handle-api-amr-create))
+      
       ;; DAR (Daily Activity Report) routes
       ((string= uri "/dar")
        (handle-dar-list))

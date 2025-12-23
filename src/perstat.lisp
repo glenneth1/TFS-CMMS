@@ -331,7 +331,7 @@
            (:div :class "header-actions"
              (:a :href "/perstat/personnel" :class "btn" "View Roster")
              (:a :href "/perstat/personnel/new" :class "btn btn-primary" "+ Add Personnel")
-             (:a :href "/perstat/movements" :class "btn" "Movement Requests")
+             (:a :href "/perstat/amr" :class "btn" "Air Movement Requests")
              (:a :href "/perstat/report" :class "btn" "Generate PERSTAT")))
          
          ;; Summary stats
@@ -822,3 +822,352 @@
         (progn
           (setf (hunchentoot:return-code*) 500)
           "Error generating report"))))
+
+;;; ============================================================
+;;; Air Movement Request (AMR) Handlers
+;;; ============================================================
+
+(defun handle-amr-list ()
+  "List all movement requests."
+  (let* ((requests (list-movement-requests :limit 50))
+         (camps (fetch-all "SELECT c.id, c.name, c.code, co.name as country_name 
+                            FROM camps c 
+                            JOIN countries co ON c.country_id = co.id 
+                            ORDER BY co.name, c.name")))
+    (html-response
+     (render-page "Air Movement Requests"
+       (cl-who:with-html-output-to-string (s)
+         (:div :class "page-header"
+           (:h1 "Air Movement Requests")
+           (:div :class "header-actions"
+             (:a :href "/perstat/amr/new" :class "btn btn-primary" "+ New AMR")))
+         (:section :class "card"
+           (:h2 "Recent Requests")
+           (if requests
+               (cl-who:htm
+                (:table :class "data-table"
+                  (:thead
+                    (:tr
+                      (:th "Request #")
+                      (:th "Type")
+                      (:th "Route")
+                      (:th "Date")
+                      (:th "Personnel")
+                      (:th "Status")
+                      (:th "Actions")))
+                  (:tbody
+                    (dolist (req requests)
+                      (cl-who:htm
+                       (:tr
+                         (:td (cl-who:str (getf req :|request_number|)))
+                         (:td (cl-who:str (getf req :|movement_type|)))
+                         (:td (cl-who:str (format nil "~A → ~A" 
+                                                  (or (getf req :|from_camp_name|) "TBD")
+                                                  (or (getf req :|to_camp_name|) "TBD"))))
+                         (:td (cl-who:str (or (getf req :|requested_date|) "-")))
+                         (:td (cl-who:str (getf req :|personnel_count|)))
+                         (:td (:span :class (format nil "badge badge-~A" 
+                                                    (string-downcase (or (getf req :|status|) "pending")))
+                                     (cl-who:str (or (getf req :|status|) "Pending"))))
+                         (:td 
+                           (:a :href (format nil "/perstat/amr/~A" (getf req :|id|))
+                               :class "btn btn-sm" "View")
+                           (:a :href (format nil "/perstat/amr/~A/print" (getf req :|id|))
+                               :class "btn btn-sm" :target "_blank" "Print"))))))))
+               (cl-who:htm
+                (:p :class "empty-state" "No movement requests yet. "
+                    (:a :href "/perstat/amr/new" "Create your first AMR"))))))))))
+
+(defun handle-amr-new ()
+  "New AMR form - select personnel and route."
+  (let* ((camps (fetch-all "SELECT c.id, c.name, c.code, co.name as country_name 
+                            FROM camps c 
+                            JOIN countries co ON c.country_id = co.id 
+                            WHERE co.name != 'Remote/HOR'
+                            ORDER BY co.name, c.name"))
+         (personnel (fetch-all "SELECT p.*, ca.name as camp_name, co.name as country_name
+                                FROM personnel p
+                                LEFT JOIN camps ca ON p.current_camp_id = ca.id
+                                LEFT JOIN countries co ON ca.country_id = co.id
+                                WHERE p.status = 'Active'
+                                ORDER BY p.full_name")))
+    (html-response
+     (render-page "New Air Movement Request"
+       (cl-who:with-html-output-to-string (s)
+         (:div :class "page-header"
+           (:h1 "Create Air Movement Request"))
+         (:form :method "post" :action "/api/perstat/amr/create" :class "form-card"
+           (:h3 "Movement Details")
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "Movement Type")
+               (:select :name "movement_type" :required t
+                 (:option :value "AMR" "AMR - Air Movement Request")
+                 (:option :value "Space-A" "Space-A")))
+             (:div :class "form-group required"
+               (:label "Requested Date")
+               (:input :type "date" :name "requested_date" :required t)))
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "From Location")
+               (:select :name "from_camp_id" :required t
+                 (:option :value "" "-- Select Origin --")
+                 (dolist (c camps)
+                   (cl-who:htm
+                    (:option :value (getf c :|id|)
+                             (cl-who:str (format nil "~A - ~A (~A)" 
+                                                 (getf c :|country_name|)
+                                                 (getf c :|name|)
+                                                 (or (getf c :|code|) ""))))))))
+             (:div :class "form-group required"
+               (:label "To Location")
+               (:select :name "to_camp_id" :required t
+                 (:option :value "" "-- Select Destination --")
+                 (dolist (c camps)
+                   (cl-who:htm
+                    (:option :value (getf c :|id|)
+                             (cl-who:str (format nil "~A - ~A (~A)" 
+                                                 (getf c :|country_name|)
+                                                 (getf c :|name|)
+                                                 (or (getf c :|code|) "")))))))))
+           (:div :class "form-group"
+             (:label "Notes")
+             (:textarea :name "notes" :rows "2" :placeholder "Any special instructions..."))
+           
+           (:hr)
+           (:h3 "Select Personnel")
+           (:p :class "text-muted" "Check the personnel to include in this movement request.")
+           (:div :class "personnel-selection" :style "max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 1rem; border-radius: 4px;"
+             (:table :class "data-table"
+               (:thead
+                 (:tr
+                   (:th :style "width: 40px;" "")
+                   (:th "Name")
+                   (:th "Current Location")
+                   (:th "Blood Type")
+                   (:th "Nationality")))
+               (:tbody
+                 (dolist (p personnel)
+                   (cl-who:htm
+                    (:tr
+                      (:td (:input :type "checkbox" :name "personnel_ids" 
+                                   :value (getf p :|id|)))
+                      (:td (cl-who:str (getf p :|full_name|)))
+                      (:td (cl-who:str (or (getf p :|camp_name|) "-")))
+                      (:td (cl-who:str (or (getf p :|blood_type|) "-")))
+                      (:td (cl-who:str (or (getf p :|nationality|) "-")))))))))
+           
+           (:div :class "form-actions" :style "margin-top: 1rem;"
+             (:button :type "submit" :class "btn btn-primary" "Create AMR")
+             (:a :href "/perstat/amr" :class "btn" "Cancel"))))))))
+
+(defun handle-amr-detail (id-str)
+  "View AMR details."
+  (let* ((id (parse-int id-str))
+         (request (when id (get-movement-request id))))
+    (if request
+        (html-response
+         (render-page (format nil "AMR - ~A" (getf request :|request_number|))
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 (cl-who:str (format nil "AMR: ~A" (getf request :|request_number|))))
+               (:div :class "header-actions"
+                 (:a :href (format nil "/perstat/amr/~A/print" id) 
+                     :class "btn btn-primary" :target "_blank" "Print for Email")
+                 (:a :href "/perstat/amr" :class "btn" "Back to List")))
+             
+             (:section :class "card"
+               (:h2 "Movement Details")
+               (:div :class "detail-grid"
+                 (:div :class "detail-item"
+                   (:label "Type")
+                   (:span (cl-who:str (getf request :|movement_type|))))
+                 (:div :class "detail-item"
+                   (:label "Status")
+                   (:span :class (format nil "badge badge-~A" 
+                                         (string-downcase (or (getf request :|status|) "pending")))
+                          (cl-who:str (or (getf request :|status|) "Pending"))))
+                 (:div :class "detail-item"
+                   (:label "Route")
+                   (:span (cl-who:str (format nil "~A (~A) → ~A (~A)"
+                                              (or (getf request :|from_camp_name|) "TBD")
+                                              (or (getf request :|from_country_name|) "")
+                                              (or (getf request :|to_camp_name|) "TBD")
+                                              (or (getf request :|to_country_name|) "")))))
+                 (:div :class "detail-item"
+                   (:label "Requested Date")
+                   (:span (cl-who:str (or (getf request :|requested_date|) "-"))))
+                 (:div :class "detail-item"
+                   (:label "Requested By")
+                   (:span (cl-who:str (or (getf request :|requested_by_name|) "-"))))
+                 (when (getf request :|notes|)
+                   (cl-who:htm
+                    (:div :class "detail-item"
+                      (:label "Notes")
+                      (:span (cl-who:str (getf request :|notes|))))))))
+             
+             (:section :class "card"
+               (:h2 (cl-who:str (format nil "Personnel (~A)" (length (getf request :personnel)))))
+               (if (getf request :personnel)
+                   (cl-who:htm
+                    (:table :class "data-table"
+                      (:thead
+                        (:tr
+                          (:th "Name")
+                          (:th "Nationality")
+                          (:th "Body Weight")
+                          (:th "Bag Types")
+                          (:th "Bags/Weight")
+                          (:th "Blood Type")
+                          (:th "Passport")
+                          (:th "DODI")))
+                      (:tbody
+                        (dolist (p (getf request :personnel))
+                          (cl-who:htm
+                           (:tr
+                             (:td (cl-who:str (getf p :|full_name|)))
+                             (:td (cl-who:str (or (getf p :|nationality|) "-")))
+                             (:td (cl-who:str (if (getf p :|body_weight_lbs|)
+                                                  (format nil "~A lbs" (getf p :|body_weight_lbs|))
+                                                  "-")))
+                             (:td (cl-who:str (or (getf p :|bag_types|) "-")))
+                             (:td (cl-who:str (if (getf p :|bag_count|)
+                                                  (format nil "~A~A" 
+                                                          (getf p :|bag_count|)
+                                                          (if (getf p :|bag_weight_lbs|)
+                                                              (format nil " / ~A lbs" (getf p :|bag_weight_lbs|))
+                                                              ""))
+                                                  "-")))
+                             (:td (cl-who:str (or (getf p :|blood_type|) "-")))
+                             (:td (cl-who:str (or (getf p :|passport_number|) "-")))
+                             (:td (cl-who:str (or (getf p :|dodi_number|) "-")))))))))
+                   (cl-who:htm
+                    (:p :class "empty-state" "No personnel assigned.")))))))
+        (progn
+          (setf (hunchentoot:return-code*) 404)
+          (html-response
+           (render-page "Not Found"
+             "<div class='empty-state'><h1>AMR Not Found</h1><a href='/perstat/amr' class='btn'>Back to List</a></div>"))))))
+
+(defun handle-amr-print (id-str)
+  "Printable AMR format for copying into email."
+  (let* ((id (parse-int id-str))
+         (request (when id (get-movement-request id))))
+    (if request
+        (let ((personnel (getf request :personnel))
+              (route (format nil "~A (~A) to ~A (~A)"
+                             (or (getf request :|from_camp_name|) "TBD")
+                             (or (getf request :|from_country_name|) "")
+                             (or (getf request :|to_camp_name|) "TBD")
+                             (or (getf request :|to_country_name|) ""))))
+          (hunchentoot:no-cache)
+          (html-response
+           (cl-who:with-html-output-to-string (s nil :prologue t)
+             (:html
+               (:head
+                 (:title (cl-who:str (format nil "AMR - ~A" (getf request :|request_number|))))
+                 (:style "
+@media print {
+  body { margin: 0; padding: 10px; }
+  .no-print { display: none; }
+}
+body { font-family: Arial, sans-serif; font-size: 10pt; max-width: 1200px; margin: 0 auto; padding: 20px; }
+h1 { font-size: 14pt; margin-bottom: 10px; }
+h2 { font-size: 12pt; margin: 15px 0 5px 0; background: #f0f0f0; padding: 5px; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 15px; }
+th, td { border: 1px solid #333; padding: 4px 8px; text-align: left; font-size: 9pt; }
+th { background: #e0e0e0; font-weight: bold; }
+.route { font-weight: bold; font-size: 11pt; margin: 10px 0; }
+.copy-hint { background: #ffffcc; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; }
+.btn { display: inline-block; padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; margin-right: 10px; }
+"))
+               (:body
+                 (:div :class "no-print"
+                   (:a :href (format nil "/perstat/amr/~A" id) :class "btn" "← Back")
+                   (:button :onclick "window.print()" :class "btn" "Print")
+                   (:div :class "copy-hint"
+                     (:strong "Instructions: ") 
+                     "Select and copy the table below, then paste into your email to LT Castillo."))
+                 
+                 (:h1 (cl-who:str (format nil "AMR: ~A" (getf request :|request_number|))))
+                 (:p :class "route" (cl-who:str route))
+                 
+                 (:table
+                   (:tbody
+                     ;; Row 1: Labels
+                     (:tr
+                       (:th "Name")
+                       (dolist (p personnel)
+                         (cl-who:htm (:td (cl-who:str (getf p :|full_name|))))))
+                     ;; Row 2: Nationality
+                     (:tr
+                       (:th "Nationality")
+                       (dolist (p personnel)
+                         (cl-who:htm (:td (cl-who:str (or (getf p :|nationality|) "-"))))))
+                     ;; Row 3: Body Weight
+                     (:tr
+                       (:th "Body Weight")
+                       (dolist (p personnel)
+                         (cl-who:htm (:td (cl-who:str (if (getf p :|body_weight_lbs|)
+                                                          (format nil "~A lbs" (getf p :|body_weight_lbs|))
+                                                          "-"))))))
+                     ;; Row 4: Types of Bags
+                     (:tr
+                       (:th "Types of Bags")
+                       (dolist (p personnel)
+                         (cl-who:htm (:td (cl-who:str (or (getf p :|bag_types|) "-"))))))
+                     ;; Row 5: Number of Bags / Weight
+                     (:tr
+                       (:th "Number of Bags / Weight")
+                       (dolist (p personnel)
+                         (cl-who:htm (:td (cl-who:str (if (getf p :|bag_count|)
+                                                          (format nil "~A~A" 
+                                                                  (getf p :|bag_count|)
+                                                                  (if (getf p :|bag_weight_lbs|)
+                                                                      (format nil "~%~A lbs Total" (getf p :|bag_weight_lbs|))
+                                                                      ""))
+                                                          "-"))))))
+                     ;; Row 6: Blood Type
+                     (:tr
+                       (:th "Blood Type")
+                       (dolist (p personnel)
+                         (cl-who:htm (:td (cl-who:str (or (getf p :|blood_type|) "-"))))))
+                     ;; Row 7: Passport Number
+                     (:tr
+                       (:th "Passport Number")
+                       (dolist (p personnel)
+                         (cl-who:htm (:td (cl-who:str (or (getf p :|passport_number|) "-"))))))
+                     ;; Row 8: DODI Number
+                     (:tr
+                       (:th "DODI Number")
+                       (dolist (p personnel)
+                         (cl-who:htm (:td (cl-who:str (or (getf p :|dodi_number|) "N/A")))))))))))))
+        (progn
+          (setf (hunchentoot:return-code*) 404)
+          "AMR not found"))))
+
+(defun handle-api-amr-create ()
+  "Create a new AMR."
+  (let* ((user (get-current-user))
+         (movement-type (get-param "movement_type"))
+         (from-camp-id (parse-int (get-param "from_camp_id")))
+         (to-camp-id (parse-int (get-param "to_camp_id")))
+         (requested-date (get-param "requested_date"))
+         (notes (get-param "notes"))
+         (personnel-ids (mapcar #'parse-int 
+                                (ensure-list (hunchentoot:post-parameters* "personnel_ids")))))
+    (if (and movement-type from-camp-id to-camp-id personnel-ids)
+        (let ((request-id (create-movement-request 
+                           :movement-type movement-type
+                           :from-camp-id from-camp-id
+                           :to-camp-id to-camp-id
+                           :requested-date requested-date
+                           :requested-by (when user (getf user :|id|))
+                           :notes notes
+                           :personnel-ids personnel-ids)))
+          (redirect-to (format nil "/perstat/amr/~A" request-id)))
+        (redirect-to "/perstat/amr/new?error=missing-fields"))))
+
+(defun ensure-list (val)
+  "Ensure value is a list (for checkbox handling)."
+  (if (listp val) val (list val)))
