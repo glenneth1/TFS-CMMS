@@ -40,16 +40,22 @@
   "Get all pending R&R requests, optionally filtered by staff category."
   (if category
       (fetch-all 
-       "SELECT r.*, u.full_name, u.current_location, u.staff_category
+       "SELECT r.*, u.full_name, u.staff_category,
+               COALESCE(co.name || ' - ' || ca.name, u.current_location) as current_location
         FROM rr_requests r 
         JOIN users u ON r.user_id = u.id
+        LEFT JOIN camps ca ON u.current_camp_id = ca.id
+        LEFT JOIN countries co ON ca.country_id = co.id
         WHERE r.status = 'Pending' AND u.staff_category = ?
         ORDER BY r.requested_at ASC"
        category)
       (fetch-all 
-       "SELECT r.*, u.full_name, u.current_location, u.staff_category
+       "SELECT r.*, u.full_name, u.staff_category,
+               COALESCE(co.name || ' - ' || ca.name, u.current_location) as current_location
         FROM rr_requests r 
         JOIN users u ON r.user_id = u.id
+        LEFT JOIN camps ca ON u.current_camp_id = ca.id
+        LEFT JOIN countries co ON ca.country_id = co.id
         WHERE r.status = 'Pending'
         ORDER BY r.requested_at ASC")))
 
@@ -187,10 +193,13 @@
 (defun get-rr-request (id)
   "Get a single R&R request by ID."
   (fetch-one 
-   "SELECT r.*, u.full_name, u.current_location, u.staff_category, u.bog_date,
+   "SELECT r.*, u.full_name, u.staff_category, u.bog_date,
+           COALESCE(co.name || ' - ' || ca.name, u.current_location) as current_location,
            rev.full_name as reviewer_name
     FROM rr_requests r 
     JOIN users u ON r.user_id = u.id
+    LEFT JOIN camps ca ON u.current_camp_id = ca.id
+    LEFT JOIN countries co ON ca.country_id = co.id
     LEFT JOIN users rev ON r.reviewed_by = rev.id
     WHERE r.id = ?" id))
 
@@ -753,20 +762,26 @@ function hideRejectModal() {
                                    (if (= selected-month 2) 28 31))))
              ;; Get people DEPARTING this month (start_date within month)
              (departing-rr (fetch-all 
-                            "SELECT r.*, u.full_name, u.electrician_type, u.current_location,
+                            "SELECT r.*, u.full_name, u.electrician_type, 
+                                    COALESCE(co.name || ' - ' || ca.name, u.current_location) as current_location,
                                     'departing' as booking_type
                              FROM rr_requests r 
                              JOIN users u ON r.user_id = u.id
+                             LEFT JOIN camps ca ON u.current_camp_id = ca.id
+                             LEFT JOIN countries co ON ca.country_id = co.id
                              WHERE r.status = 'Approved'
                                AND r.start_date >= ? AND r.start_date <= ?
                              ORDER BY r.start_date, u.full_name"
                             start-date end-date))
              ;; Get people RETURNING this month who left BEFORE this month
              (returning-rr (fetch-all 
-                            "SELECT r.*, u.full_name, u.electrician_type, u.current_location,
+                            "SELECT r.*, u.full_name, u.electrician_type, 
+                                    COALESCE(co.name || ' - ' || ca.name, u.current_location) as current_location,
                                     'returning' as booking_type
                              FROM rr_requests r 
                              JOIN users u ON r.user_id = u.id
+                             LEFT JOIN camps ca ON u.current_camp_id = ca.id
+                             LEFT JOIN countries co ON ca.country_id = co.id
                              WHERE r.status = 'Approved'
                                AND r.end_date >= ? AND r.end_date <= ?
                                AND r.start_date < ?

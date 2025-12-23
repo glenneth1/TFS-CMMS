@@ -3,6 +3,13 @@
 ;;; Admin Panel Handlers
 ;;; Handles user management, system settings, and admin reports
 
+(defun list-camps-with-countries ()
+  "Get all camps with their country names for dropdowns."
+  (fetch-all "SELECT c.id, c.name, co.name as country_name 
+              FROM camps c 
+              JOIN countries co ON c.country_id = co.id 
+              ORDER BY co.name, c.name"))
+
 (defun handle-admin-reports ()
   "Admin reports page showing rejection history."
   (let ((user (get-current-user)))
@@ -143,7 +150,8 @@
   (let ((current-user (get-current-user))
         (user-id (parse-int user-id-str)))
     (if (and current-user (user-is-admin-p current-user))
-        (let ((edit-user (get-user user-id)))
+        (let ((edit-user (get-user user-id))
+              (camps (list-camps-with-countries)))
           (if edit-user
               (html-response
                (render-page "Edit User"
@@ -186,9 +194,16 @@
                                 :value (or (getf edit-user :|team_number|) ""))))
                     (:div :class "form-group"
                       (:label "Current Location (Work Site)")
-                      (:input :type "text" :name "current_location" 
-                              :placeholder "e.g., Iraq - Erbil, Syria - NLZ"
-                              :value (or (getf edit-user :|current_location|) "")))
+                      (:select :name "current_camp_id"
+                        (:option :value "" "-- Select Location --")
+                        (dolist (c camps)
+                          (cl-who:htm
+                           (:option :value (princ-to-string (getf c :|id|))
+                                    :selected (and (getf edit-user :|current_camp_id|)
+                                                   (= (getf c :|id|) (getf edit-user :|current_camp_id|)))
+                                    (cl-who:str (format nil "~A - ~A" 
+                                                        (getf c :|country_name|)
+                                                        (getf c :|name|))))))))
                     (:div :class "form-row"
                       (:div :class "form-group"
                         (:label "Hire Date")
@@ -277,7 +292,7 @@
               (role (get-param "role"))
               (electrician-type (get-param "electrician_type"))
               (team-number (get-param "team_number"))
-              (current-location (get-param "current_location"))
+              (current-camp-id (parse-int (get-param "current_camp_id")))
               (hire-date (get-param "hire_date"))
               (bog-date (get-param "bog_date"))
               (active (parse-int (get-param "active")))
@@ -291,10 +306,10 @@
                        :hire-date (when (and hire-date (not (string= hire-date ""))) hire-date)
                        :bog-date (when (and bog-date (not (string= bog-date ""))) bog-date)
                        :active (= active 1))
-          ;; Update is_admin and current_location separately
-          (execute-sql "UPDATE users SET is_admin = ?, current_location = ? WHERE id = ?" 
+          ;; Update is_admin and current_camp_id separately
+          (execute-sql "UPDATE users SET is_admin = ?, current_camp_id = ? WHERE id = ?" 
                        (or is-admin 0) 
-                       (when (and current-location (not (string= current-location ""))) current-location)
+                       current-camp-id
                        user-id)
           (redirect-to "/admin/users"))
         (redirect-to "/unauthorized"))))

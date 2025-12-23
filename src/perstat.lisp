@@ -522,18 +522,14 @@
            (:div :class "form-row"
              (:div :class "form-group"
                (:label "Camp/Base")
-               (:select :name "current_camp_id"
-                 (:option :value "" "-- Select or enter free text below --")
+               (:select :name "current_camp_id" :required t
+                 (:option :value "" "-- Select Location --")
                  (dolist (c camps)
                    (cl-who:htm 
                     (:option :value (getf c :|id|)
                              (cl-who:str (format nil "~A - ~A" 
                                                  (getf c :|country_name|)
-                                                 (getf c :|name|))))))))
-             (:div :class "form-group"
-               (:label "Location (free text for remote staff)")
-               (:input :type "text" :name "current_location" 
-                       :placeholder "e.g., London, UK (for remote QC staff)")))
+                                                 (getf c :|name|)))))))))
            (:div :class "form-group"
              (:label "Notes")
              (:textarea :name "notes" :rows "3"))
@@ -576,11 +572,8 @@
                    (:label "Country")
                    (:span (cl-who:str (or (getf person :|country_name|) "-"))))
                  (:div :class "detail-item"
-                   (:label "Camp/Base")
-                   (:span (cl-who:str (or (getf person :|camp_name|) "-"))))
-                 (:div :class "detail-item"
-                   (:label "Location (Text)")
-                   (:span (cl-who:str (or (getf person :|current_location|) "-")))))))))
+                   (:label "Location")
+                   (:span (cl-who:str (or (getf person :|camp_name|) "-")))))))))
         (progn
           (setf (hunchentoot:return-code*) 404)
           (html-response
@@ -646,24 +639,18 @@
                            :value (or (getf person :|body_weight_lbs|) ""))))
                (:hr)
                (:h3 "Current Location")
-               (:div :class "form-row"
-                 (:div :class "form-group"
-                   (:label "Camp/Base")
-                   (:select :name "current_camp_id"
-                     (:option :value "" "-- Select or enter free text below --")
-                     (dolist (c camps)
-                       (let ((selected (and (getf person :|current_camp_id|)
-                                           (= (getf c :|id|) (getf person :|current_camp_id|)))))
-                         (cl-who:htm 
-                          (:option :value (getf c :|id|) :selected selected
-                                   (cl-who:str (format nil "~A - ~A" 
-                                                       (getf c :|country_name|)
-                                                       (getf c :|name|)))))))))
-                 (:div :class "form-group"
-                   (:label "Location (free text)")
-                   (:input :type "text" :name "current_location" 
-                           :value (or (getf person :|current_location|) "")
-                           :placeholder "e.g., Erbil - Camp Strike, or UK - HOR")))
+               (:div :class "form-group"
+                 (:label "Camp/Base")
+                 (:select :name "current_camp_id" :required t
+                   (:option :value "" "-- Select Location --")
+                   (dolist (c camps)
+                     (let ((selected (and (getf person :|current_camp_id|)
+                                         (= (getf c :|id|) (getf person :|current_camp_id|)))))
+                       (cl-who:htm 
+                        (:option :value (getf c :|id|) :selected selected
+                                 (cl-who:str (format nil "~A - ~A" 
+                                                     (getf c :|country_name|)
+                                                     (getf c :|name|)))))))))
                (:div :class "form-group"
                  (:label "Notes")
                  (:textarea :name "notes" :rows "3" (cl-who:str (or (getf person :|notes|) ""))))

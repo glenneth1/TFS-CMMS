@@ -210,6 +210,10 @@
   (ignore-errors
     (execute-sql "ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"))
   
+  ;; Add current_camp_id column if it doesn't exist (for existing databases)
+  (ignore-errors
+    (execute-sql "ALTER TABLE users ADD COLUMN current_camp_id INTEGER REFERENCES camps(id)"))
+  
   ;; Contract Periods (for R&R tracking)
   (execute-sql "
     CREATE TABLE IF NOT EXISTS contract_periods (
