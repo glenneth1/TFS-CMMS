@@ -572,3 +572,103 @@
                       :current-location location
                       :notes notes)
     (redirect-to "/perstat/personnel")))
+
+;;; Report Generation
+
+(defvar *perstat-script-path*
+  (merge-pathnames "scripts/generate_perstat.py" (get-app-directory))
+  "Path to PERSTAT generation script.")
+
+(defvar *perstat-reports-directory*
+  (merge-pathnames "data/perstat/" (get-app-directory))
+  "Directory for generated PERSTAT reports.")
+
+(defun ensure-perstat-reports-directory ()
+  "Ensure PERSTAT reports directory exists."
+  (ensure-directories-exist *perstat-reports-directory*))
+
+(defun get-python-path ()
+  "Get the Python interpreter path - checks for venv or uses system python3."
+  (let ((venv-python (merge-pathnames ".venv/bin/python3" (get-app-directory))))
+    (if (probe-file venv-python)
+        (namestring venv-python)
+        "python3")))
+
+(defun generate-perstat-report (format)
+  "Generate a PERSTAT report in the specified format (pdf or excel).
+   Returns the path to the generated file."
+  (ensure-perstat-reports-directory)
+  (let* ((timestamp (multiple-value-bind (sec min hour day month year)
+                        (decode-universal-time (get-universal-time))
+                      (declare (ignore sec min hour))
+                      (format nil "~4,'0D~2,'0D~2,'0D" year month day)))
+         (extension (if (string= format "pdf") "pdf" "xlsx"))
+         (filename (format nil "PERSTAT_~A.~A" timestamp extension))
+         (output-path (merge-pathnames filename *perstat-reports-directory*))
+         (python-bin (get-python-path)))
+    (let ((result (uiop:run-program 
+                   (list (namestring python-bin)
+                         (namestring *perstat-script-path*)
+                         "--format" format
+                         "--output" (namestring output-path))
+                   :output :string
+                   :error-output :string
+                   :ignore-error-status t)))
+      (declare (ignore result))
+      (when (probe-file output-path)
+        output-path))))
+
+(defun handle-perstat-report-page ()
+  "Page to generate PERSTAT reports."
+  (html-response
+   (render-page "Generate PERSTAT Report"
+     (cl-who:with-html-output-to-string (s)
+       (:div :class "page-header"
+         (:h1 "Generate PERSTAT Report"))
+       (:section :class "card"
+         (:h2 "Report Options")
+         (:p "Generate a Personnel Status (PERSTAT) report in your preferred format.")
+         (:div :class "form-row" :style "gap: 1rem; margin-top: 1rem;"
+           (:a :href "/perstat/report/generate?format=pdf" :class "btn btn-primary"
+               "📄 Download PDF (Internal DSR)")
+           (:a :href "/perstat/report/generate?format=excel" :class "btn btn-primary"
+               "📊 Download Excel (USACE OCONUS)")))
+       (:section :class "card"
+         (:h2 "Report Formats")
+         (:div :class "form-row"
+           (:div :class "form-group"
+             (:h3 "Internal PERSTAT-DSR (PDF)")
+             (:p "Detailed daily status report with individual personnel records.")
+             (:ul
+               (:li "Name, location, status")
+               (:li "Position and nationality")
+               (:li "Master/Journeyman designation")
+               (:li "Team assignment")
+               (:li "Deploy dates")))
+           (:div :class "form-group"
+             (:h3 "USACE OCONUS PERSTAT (Excel)")
+             (:p "Summary format for USACE reporting.")
+             (:ul
+               (:li "Personnel counts by location")
+               (:li "Breakdown by role category")
+               (:li "Detailed roster sheet")))))))))
+
+(defun handle-perstat-report-generate ()
+  "Generate and download a PERSTAT report."
+  (let* ((format (or (get-param "format") "pdf"))
+         (report-path (generate-perstat-report format)))
+    (if report-path
+        (progn
+          (setf (hunchentoot:content-type*) 
+                (if (string= format "pdf") 
+                    "application/pdf" 
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+          (setf (hunchentoot:header-out :content-disposition)
+                (format nil "attachment; filename=\"~A\"" (file-namestring report-path)))
+          (with-open-file (stream report-path :element-type '(unsigned-byte 8))
+            (let ((buffer (make-array (file-length stream) :element-type '(unsigned-byte 8))))
+              (read-sequence buffer stream)
+              buffer)))
+        (progn
+          (setf (hunchentoot:return-code*) 500)
+          "Error generating report"))))

@@ -61,7 +61,7 @@
      ,@body))
 
 (defun render-nav ()
-  "Render navigation bar."
+  "Render navigation bar with dropdown menus."
   (let* ((user (get-current-user))
          (pending-qc (if user (get-pending-qc-count-for-user user) 0)))
     (cl-who:with-html-output-to-string (s)
@@ -74,40 +74,43 @@
         (:ul :class "nav-links"
           (:li (:a :href "/" "Dashboard"))
           (:li (:a :href "/work-orders" "Work Orders"))
-          (:li (:a :href "/inspection-reports" "Inspection Reports"
+          (:li (:a :href "/inspection-reports" "Inspections"
                    (when (and user (user-is-qc-p user) (> pending-qc 0))
                      (cl-who:htm
                       (:span :class "notification-badge" (cl-who:str pending-qc))))))
-          (:li (:a :href "/sites" "Sites"))
-          (:li (:a :href "/inventory" "Inventory"))
-          (:li (:a :href "/mrf" "MRF"))
-          (:li (:a :href "/rr" "R&R"))
-          (:li (:a :href "/dar" "DAR"))
-          (:li (:a :href "/irp" "IRP"))
-          (when (and user (user-can-generate-sar-p user))
-            (cl-who:htm
-             (:li (:a :href "/sar" "SAR"))))
-          (when (and user (user-can-access-master-tracker-p user))
-            (cl-who:htm
-             (:li (:a :href "/master-tracker" "Master Tracker"))))
-          (:li (:a :href "/perstat" "PERSTAT"))
-          (:li (:a :href "/reports" "Reports"))
+          ;; Reports dropdown
+          (:li :class "nav-dropdown"
+            (:a :href "#" :class "nav-dropdown-toggle" "Reports ▾")
+            (:ul :class "nav-dropdown-menu"
+              (:li (:a :href "/dar" "DAR"))
+              (:li (:a :href "/irp" "IRP"))
+              (when (and user (user-can-generate-sar-p user))
+                (cl-who:htm (:li (:a :href "/sar" "SAR"))))
+              (:li (:a :href "/reports" "Inspection Reports"))
+              (when (and user (user-can-access-master-tracker-p user))
+                (cl-who:htm (:li (:a :href "/master-tracker" "Master Tracker"))))))
+          ;; Resources dropdown
+          (:li :class "nav-dropdown"
+            (:a :href "#" :class "nav-dropdown-toggle" "Resources ▾")
+            (:ul :class "nav-dropdown-menu"
+              (:li (:a :href "/sites" "Sites"))
+              (:li (:a :href "/inventory" "Inventory"))
+              (:li (:a :href "/mrf" "MRF"))
+              (:li (:a :href "/rr" "R&R"))
+              (:li (:a :href "/perstat" "PERSTAT"))))
+          ;; Admin dropdown (if admin)
           (when (and user (user-is-admin-p user))
             (cl-who:htm
-             (:li :class "nav-admin"
-               (:a :href "/admin/users" "Users"))
-             (:li :class "nav-admin"
-               (:a :href "/admin/settings" "Settings"))))
-          (when (and user (or (user-is-admin-p user)
-                              (string= (string-downcase (or (getf user :|role|) "")) "qc_manager")))
-            (cl-who:htm
-             (:li :class "nav-admin"
-               (:a :href "/admin/reports" "Reports History")))))
+             (:li :class "nav-dropdown"
+               (:a :href "#" :class "nav-dropdown-toggle" "Admin ▾")
+               (:ul :class "nav-dropdown-menu"
+                 (:li (:a :href "/admin/users" "Users"))
+                 (:li (:a :href "/admin/settings" "Settings"))
+                 (:li (:a :href "/admin/reports" "Reports History")))))))
         (when user
           (cl-who:htm
            (:div :class "nav-user"
              (:span :class "user-name" (cl-who:str (getf user :|full_name|)))
-             (:span :class "user-role" (cl-who:str (format nil "(~A)" (getf user :|role|))))
              (:a :href "/logout" :class "btn-logout" "Logout"))))))))
 
 (defun render-page (title content)
@@ -1524,6 +1527,10 @@ function updateDatesFromWeek() {
        (handle-perstat-personnel-list))
       ((string= uri "/perstat/personnel/new")
        (handle-perstat-personnel-new))
+      ((string= uri "/perstat/report")
+       (handle-perstat-report-page))
+      ((string= uri "/perstat/report/generate")
+       (handle-perstat-report-generate))
       ((and (eq method :post) (string= uri "/api/perstat/personnel/create"))
        (handle-api-perstat-personnel-create))
       
