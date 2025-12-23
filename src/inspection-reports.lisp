@@ -34,7 +34,7 @@
 ;;; PDF Generation
 
 (defvar *python-path* 
-  #p"/home/glenn/Notes/org/TFS/CMMS/.venv/bin/python"
+  #p"python3"
   "Path to Python interpreter with reportlab.")
 
 (defvar *pdf-script-path*

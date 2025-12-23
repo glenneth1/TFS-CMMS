@@ -2457,7 +2457,7 @@ function updateMtDatesFromWeek() {
            (generated-now nil))
       ;; Generate report if requested
       (when generate-p
-        (let ((python-path "/home/glenn/Notes/org/TFS/CMMS/.venv/bin/python")
+        (let ((python-path "python3")
               (script-path (namestring (merge-pathnames "scripts/generate_weekly_report.py" *base-directory*))))
           (uiop:run-program (list python-path script-path "--start" start-date "--end" end-date)
                             :output t :error-output t)
