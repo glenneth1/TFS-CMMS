@@ -182,13 +182,24 @@
                                      to-location to-camp-id requested-date
                                      requested-by notes personnel-ids)
   "Create a new movement request with associated personnel."
-  (let ((request-number (generate-movement-request-number)))
+  (let* ((request-number (generate-movement-request-number))
+         ;; Get location names from camp IDs if not provided
+         (from-loc (or from-location
+                       (when from-camp-id
+                         (let ((camp (fetch-one "SELECT c.name, co.name as country FROM camps c JOIN countries co ON c.country_id = co.id WHERE c.id = ?" from-camp-id)))
+                           (when camp (format nil "~A - ~A" (getf camp :|country|) (getf camp :|name|)))))
+                       "Unknown"))
+         (to-loc (or to-location
+                     (when to-camp-id
+                       (let ((camp (fetch-one "SELECT c.name, co.name as country FROM camps c JOIN countries co ON c.country_id = co.id WHERE c.id = ?" to-camp-id)))
+                         (when camp (format nil "~A - ~A" (getf camp :|country|) (getf camp :|name|)))))
+                     "Unknown")))
     (execute-sql 
      "INSERT INTO movement_requests (request_number, movement_type, from_location, from_camp_id,
                                     to_location, to_camp_id, requested_date, requested_by, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-     request-number movement-type from-location from-camp-id
-     to-location to-camp-id requested-date requested-by notes)
+     request-number movement-type from-loc from-camp-id
+     to-loc to-camp-id requested-date requested-by notes)
     (let ((request-id (getf (fetch-one "SELECT last_insert_rowid() as id") :|id|)))
       ;; Add personnel to the request
       (dolist (pid personnel-ids)
@@ -608,35 +619,62 @@
                        (let ((selected (string= cat (getf person :|role_category|))))
                          (cl-who:htm 
                           (:option :value cat :selected selected (cl-who:str cat))))))))
-               (:div :class "form-row"
-                 (:div :class "form-group"
-                   (:label "Status")
-                   (:select :name "status"
-                     (:option :value "Active" :selected (string= "Active" (getf person :|status|)) "Active / Present")
-                     (:option :value "R/R" :selected (string= "R/R" (getf person :|status|)) "R/R (Rest & Recuperation)")
-                     (:option :value "Remote" :selected (string= "Remote" (getf person :|status|)) "Remote (Working from HOR)")
-                     (:option :value "Leave" :selected (string= "Leave" (getf person :|status|)) "Leave")
-                     (:option :value "LWOP" :selected (string= "LWOP" (getf person :|status|)) "LWOP (Leave Without Pay)")
-                     (:option :value "Medical" :selected (string= "Medical" (getf person :|status|)) "Medical Leave")
-                     (:option :value "Departed" :selected (string= "Departed" (getf person :|status|)) "Departed")))
-                 (:div :class "form-group"
-                   (:label "Blood Type")
-                   (:select :name "blood_type"
-                     (:option :value "" "-- Select --")
-                     (dolist (bt *blood-types*)
-                       (let ((selected (string= bt (getf person :|blood_type|))))
-                         (cl-who:htm 
-                          (:option :value bt :selected selected (cl-who:str bt))))))))
-               (:div :class "form-row"
-                 (:div :class "form-group"
-                   (:label "Nationality")
-                   (:input :type "text" :name "nationality" 
-                           :value (or (getf person :|nationality|) "")
-                           :placeholder "e.g., UK, US, OCN"))
-                 (:div :class "form-group"
-                   (:label "Body Weight (lbs)")
-                   (:input :type "number" :name "body_weight_lbs"
-                           :value (or (getf person :|body_weight_lbs|) ""))))
+               (:div :class "form-group"
+                 (:label "Status")
+                 (:select :name "status"
+                   (:option :value "Active" :selected (string= "Active" (getf person :|status|)) "Active / Present")
+                   (:option :value "R/R" :selected (string= "R/R" (getf person :|status|)) "R/R (Rest & Recuperation)")
+                   (:option :value "Remote" :selected (string= "Remote" (getf person :|status|)) "Remote (Working from HOR)")
+                   (:option :value "Leave" :selected (string= "Leave" (getf person :|status|)) "Leave")
+                   (:option :value "LWOP" :selected (string= "LWOP" (getf person :|status|)) "LWOP (Leave Without Pay)")
+                   (:option :value "Medical" :selected (string= "Medical" (getf person :|status|)) "Medical Leave")
+                   (:option :value "Departed" :selected (string= "Departed" (getf person :|status|)) "Departed")))
+               (:hr)
+               (:h3 "AMR Information (Air Movement Request)")
+               (:p :class "text-muted" "This information is used when generating Air Movement Requests.")
+               (:div :class "form-group"
+                 (:label "Nationality")
+                 (:input :type "text" :name "nationality" 
+                         :value (or (getf person :|nationality|) "")
+                         :placeholder "e.g., British - United Kingdom"))
+               (:div :class "form-group"
+                 (:label "Body Weight (lbs)")
+                 (:input :type "number" :name "body_weight_lbs"
+                         :value (or (getf person :|body_weight_lbs|) "")
+                         :placeholder "e.g., 180"))
+               (:div :class "form-group"
+                 (:label "Types of Bags")
+                 (:input :type "text" :name "bag_types"
+                         :value (or (getf person :|bag_types|) "")
+                         :placeholder "e.g., Hard Shell Tool Box / Duffle Bag"))
+               (:div :class "form-group"
+                 (:label "Number of Bags")
+                 (:input :type "number" :name "bag_count"
+                         :value (or (getf person :|bag_count|) "")
+                         :placeholder "e.g., 3"))
+               (:div :class "form-group"
+                 (:label "Total Bag Weight (lbs)")
+                 (:input :type "number" :name "bag_weight_lbs"
+                         :value (or (getf person :|bag_weight_lbs|) "")
+                         :placeholder "e.g., 170"))
+               (:div :class "form-group"
+                 (:label "Blood Type")
+                 (:select :name "blood_type"
+                   (:option :value "" "-- Select --")
+                   (dolist (bt *blood-types*)
+                     (let ((selected (string= bt (getf person :|blood_type|))))
+                       (cl-who:htm 
+                        (:option :value bt :selected selected (cl-who:str bt)))))))
+               (:div :class "form-group"
+                 (:label "Passport Number")
+                 (:input :type "text" :name "passport_number"
+                         :value (or (getf person :|passport_number|) "")
+                         :placeholder "e.g., 123456789"))
+               (:div :class "form-group"
+                 (:label "DODI Number")
+                 (:input :type "text" :name "dodi_number"
+                         :value (or (getf person :|dodi_number|) "")
+                         :placeholder "e.g., 1234567890 or N/A"))
                (:hr)
                (:h3 "Current Location")
                (:div :class "form-group"
@@ -674,6 +712,11 @@
          (nationality (get-param "nationality"))
          (blood-type (get-param "blood_type"))
          (body-weight (parse-int (get-param "body_weight_lbs")))
+         (bag-types (get-param "bag_types"))
+         (bag-count (parse-int (get-param "bag_count")))
+         (bag-weight (parse-int (get-param "bag_weight_lbs")))
+         (passport (get-param "passport_number"))
+         (dodi (get-param "dodi_number"))
          (camp-id (parse-int (get-param "current_camp_id")))
          (notes (get-param "notes")))
     (when id
@@ -684,6 +727,11 @@
                         :nationality nationality
                         :blood-type blood-type
                         :body-weight-lbs body-weight
+                        :bag-types bag-types
+                        :bag-count bag-count
+                        :bag-weight-lbs bag-weight
+                        :passport-number passport
+                        :dodi-number dodi
                         :current-camp-id camp-id
                         :notes notes)
       ;; Sync location to linked user account
@@ -936,16 +984,21 @@
            
            (:hr)
            (:h3 "Select Personnel")
-           (:p :class "text-muted" "Check the personnel to include in this movement request.")
-           (:div :class "personnel-selection" :style "max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 1rem; border-radius: 4px;"
-             (:table :class "data-table"
+           (:p :class "text-muted" "Check the personnel to include in this movement request. "
+               (:a :href "/perstat/personnel" :target "_blank" "Edit personnel data") " to fill in missing AMR information.")
+           (:div :class "personnel-selection" :style "max-height: 500px; overflow-y: auto; border: 1px solid #ddd; padding: 1rem; border-radius: 4px;"
+             (:table :class "data-table" :style "font-size: 0.85em;"
                (:thead
                  (:tr
-                   (:th :style "width: 40px;" "")
+                   (:th :style "width: 30px;" "")
                    (:th "Name")
-                   (:th "Current Location")
-                   (:th "Blood Type")
-                   (:th "Nationality")))
+                   (:th "Location")
+                   (:th "Nationality")
+                   (:th "Weight")
+                   (:th "Bags")
+                   (:th "Blood")
+                   (:th "Passport")
+                   (:th "DODI")))
                (:tbody
                  (dolist (p personnel)
                    (cl-who:htm
@@ -954,8 +1007,16 @@
                                    :value (getf p :|id|)))
                       (:td (cl-who:str (getf p :|full_name|)))
                       (:td (cl-who:str (or (getf p :|camp_name|) "-")))
+                      (:td (cl-who:str (or (getf p :|nationality|) "-")))
+                      (:td (cl-who:str (if (getf p :|body_weight_lbs|)
+                                           (format nil "~A" (getf p :|body_weight_lbs|))
+                                           "-")))
+                      (:td (cl-who:str (if (getf p :|bag_count|)
+                                           (format nil "~A" (getf p :|bag_count|))
+                                           "-")))
                       (:td (cl-who:str (or (getf p :|blood_type|) "-")))
-                      (:td (cl-who:str (or (getf p :|nationality|) "-")))))))))
+                      (:td (cl-who:str (if (getf p :|passport_number|) "✓" "-")))
+                      (:td (cl-who:str (if (getf p :|dodi_number|) "✓" "-")))))))))
            
            (:div :class "form-actions" :style "margin-top: 1rem;"
              (:button :type "submit" :class "btn btn-primary" "Create AMR")
@@ -1087,7 +1148,7 @@ th { background: #e0e0e0; font-weight: bold; }
                    (:button :onclick "window.print()" :class "btn" "Print")
                    (:div :class "copy-hint"
                      (:strong "Instructions: ") 
-                     "Select and copy the table below, then paste into your email to LT Castillo."))
+                     "Select and copy the table below, then paste into your email."))
                  
                  (:h1 (cl-who:str (format nil "AMR: ~A" (getf request :|request_number|))))
                  (:p :class "route" (cl-who:str route))
@@ -1154,8 +1215,13 @@ th { background: #e0e0e0; font-weight: bold; }
          (to-camp-id (parse-int (get-param "to_camp_id")))
          (requested-date (get-param "requested_date"))
          (notes (get-param "notes"))
-         (personnel-ids (mapcar #'parse-int 
-                                (ensure-list (hunchentoot:post-parameters* "personnel_ids")))))
+         ;; Get all personnel_ids from POST parameters
+         (all-params (hunchentoot:post-parameters*))
+         (personnel-ids (remove nil 
+                                (mapcar (lambda (p) 
+                                          (when (string= (car p) "personnel_ids")
+                                            (parse-int (cdr p))))
+                                        all-params))))
     (if (and movement-type from-camp-id to-camp-id personnel-ids)
         (let ((request-id (create-movement-request 
                            :movement-type movement-type
