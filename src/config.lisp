@@ -126,7 +126,8 @@
 ;;; User Roles and Authentication
 
 (defvar *user-roles*
-  '("Inspector" "QC" "Admin")
+  '("Inspector" "qc" "qc_manager" "program_manager" "project_manager" "ao_lead"
+    "property_manager" "materials_supervisor" "materials_specialist")
   "Available user roles.")
 
 (defvar *session-duration-hours* 24

@@ -193,6 +193,7 @@
       full_name TEXT NOT NULL,
       email TEXT,
       role TEXT NOT NULL DEFAULT 'Inspector',
+      is_admin INTEGER DEFAULT 0,
       electrician_type TEXT,
       team_number TEXT,
       hire_date TEXT,
@@ -204,6 +205,10 @@
       created_at TEXT DEFAULT (datetime('now')),
       last_login TEXT
     )")
+  
+  ;; Add is_admin column if it doesn't exist (for existing databases)
+  (ignore-errors
+    (execute-sql "ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"))
   
   ;; Contract Periods (for R&R tracking)
   (execute-sql "

@@ -193,11 +193,19 @@
                         (:label "BOG Date (Boots on Ground)")
                         (:input :type "date" :name "bog_date"
                                 :value (or (getf edit-user :|bog_date|) ""))))
-                    (:div :class "form-group"
-                      (:label "Status")
-                      (:select :name "active"
-                        (:option :value "1" :selected (= 1 (getf edit-user :|active|)) "Active")
-                        (:option :value "0" :selected (= 0 (getf edit-user :|active|)) "Inactive")))
+                    (:div :class "form-row"
+                      (:div :class "form-group"
+                        (:label "Status")
+                        (:select :name "active"
+                          (:option :value "1" :selected (= 1 (getf edit-user :|active|)) "Active")
+                          (:option :value "0" :selected (= 0 (getf edit-user :|active|)) "Inactive")))
+                      (:div :class "form-group"
+                        (:label "Admin Privileges")
+                        (:select :name "is_admin"
+                          (:option :value "0" :selected (or (null (getf edit-user :|is_admin|))
+                                                            (= 0 (getf edit-user :|is_admin|))) "No")
+                          (:option :value "1" :selected (and (getf edit-user :|is_admin|)
+                                                            (= 1 (getf edit-user :|is_admin|))) "Yes - Full Admin Access"))))
                     (:div :class "form-actions"
                       (:button :type "submit" :class "btn btn-primary" "Save Changes")
                       (:a :href "/admin/users" :class "btn" "Cancel")))
@@ -266,7 +274,8 @@
               (team-number (get-param "team_number"))
               (hire-date (get-param "hire_date"))
               (bog-date (get-param "bog_date"))
-              (active (parse-int (get-param "active"))))
+              (active (parse-int (get-param "active")))
+              (is-admin (parse-int (get-param "is_admin"))))
           (update-user user-id 
                        :full-name full-name 
                        :email email 
@@ -276,6 +285,8 @@
                        :hire-date (when (and hire-date (not (string= hire-date ""))) hire-date)
                        :bog-date (when (and bog-date (not (string= bog-date ""))) bog-date)
                        :active (= active 1))
+          ;; Update is_admin flag separately
+          (execute-sql "UPDATE users SET is_admin = ? WHERE id = ?" (or is-admin 0) user-id)
           (redirect-to "/admin/users"))
         (redirect-to "/unauthorized"))))
 

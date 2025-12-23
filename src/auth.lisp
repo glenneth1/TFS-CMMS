@@ -156,8 +156,9 @@
          (not (and inspector2 (string= user-name inspector2))))))
 
 (defun user-is-admin-p (user)
-  "Check if user is admin."
-  (string= (getf user :|role|) "Admin"))
+  "Check if user has admin privileges (via is_admin flag or Admin role for backward compatibility)."
+  (or (and (getf user :|is_admin|) (= 1 (getf user :|is_admin|)))
+      (string= (getf user :|role|) "Admin")))
 
 (defun user-is-qc-p (user)
   "Check if user is QC, QC Manager, or Admin."
