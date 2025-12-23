@@ -733,3 +733,135 @@ th { background: #f0f0f0; font-weight: bold; }
     (when mrf-id
       (update-mrf-status mrf-id "Submitted")))
   (hunchentoot:redirect (format nil "/mrf/~A" mrf-id-str)))
+
+;;; ============================================================
+;;; Inventory Issue Report
+;;; ============================================================
+
+(defun get-issued-items-by-date-range (start-date end-date)
+  "Get all MRF items that were approved/issued within a date range."
+  (fetch-all 
+   "SELECT mri.*, mr.mrf_number, mr.approved_at, mr.approved_by, mr.status as mrf_status,
+           mr.base, mr.building_number, mr.team_number, mr.requestor_name,
+           ir.report_number, ir.id as report_id
+    FROM material_request_items mri
+    JOIN material_requests mr ON mri.mrf_id = mr.id
+    LEFT JOIN inspection_reports ir ON mr.inspection_report_id = ir.id
+    WHERE mr.status IN ('Approved', 'Issued')
+      AND DATE(mr.approved_at) >= ?
+      AND DATE(mr.approved_at) <= ?
+    ORDER BY mr.approved_at DESC, mr.mrf_number, mri.line_number"
+   start-date end-date))
+
+(defun handle-inventory-issue-report ()
+  "Handle inventory issue report page."
+  (let* ((period (or (hunchentoot:parameter "period") "OY"))
+         (week-str (hunchentoot:parameter "week"))
+         (start-date (hunchentoot:parameter "start_date"))
+         (end-date (hunchentoot:parameter "end_date"))
+         (available-weeks (get-available-contract-weeks period))
+         (selected-week (when week-str (parse-integer week-str :junk-allowed t)))
+         ;; If week selected, get date range from contract week
+         (date-range (when selected-week 
+                       (get-date-range-for-contract-week period selected-week)))
+         ;; Use week dates if selected, otherwise use manual date inputs
+         (report-start (or (getf date-range :week-start) start-date))
+         (report-end (or (getf date-range :week-end) end-date))
+         ;; Get items if we have a date range
+         (items (when (and report-start report-end)
+                  (get-issued-items-by-date-range report-start report-end)))
+         ;; Calculate totals
+         (total-items (length items))
+         (total-qty (reduce #'+ items :key (lambda (i) (or (getf i :|quantity_requested|) 0)) :initial-value 0)))
+    (html-response
+     (render-page "Inventory Issue Report"
+       (cl-who:with-html-output-to-string (s)
+         (:div :class "page-header"
+           (:h1 "Inventory Issue Report")
+           (:p :class "text-muted" "Materials and equipment approved for issue"))
+         
+         ;; Filter form
+         (:div :class "card" :style "margin-bottom: 1rem;"
+           (:form :method "get" :action "/reports/inventory-issues"
+             (:div :style "display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; align-items: end;"
+               (:div
+                 (:label "Contract Period")
+                 (:select :name "period" :style "width: 100%;"
+                   (:option :value "BY" :selected (when (string= period "BY") "selected") "Base Year")
+                   (:option :value "OY" :selected (when (string= period "OY") "selected") "Option Year")))
+               (:div
+                 (:label "Contract Week")
+                 (:select :name "week" :style "width: 100%;"
+                   (:option :value "" "-- Select Week --")
+                   (dolist (wk available-weeks)
+                     (cl-who:htm
+                      (:option :value (getf wk :week-number)
+                               :selected (when (eql selected-week (getf wk :week-number)) "selected")
+                               (cl-who:fmt "Week ~A (~A to ~A)" 
+                                           (getf wk :week-number)
+                                           (getf wk :week-start)
+                                           (getf wk :week-end)))))))
+               (:div
+                 (:label "Or Start Date")
+                 (:input :type "date" :name "start_date" :style "width: 100%;"
+                         :value (unless selected-week start-date)))
+               (:div
+                 (:label "End Date")
+                 (:input :type "date" :name "end_date" :style "width: 100%;"
+                         :value (unless selected-week end-date)))
+               (:div
+                 (:label " ")
+                 (:button :type "submit" :class "btn btn-primary" :style "width: 100%;" "Generate Report")))))
+         
+         ;; Report results
+         (when (and report-start report-end)
+           (cl-who:htm
+            (:div :class "card"
+              (:div :style "display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"
+                (:h2 :style "margin: 0;" 
+                     (cl-who:fmt "Issues: ~A to ~A" 
+                                 (format-date-display report-start)
+                                 (format-date-display report-end)))
+                (:div
+                  (:span :class "badge badge-info" :style "margin-right: 0.5rem;"
+                         (cl-who:fmt "~A line items" total-items))
+                  (:span :class "badge badge-success"
+                         (cl-who:fmt "~A total qty" total-qty))
+                  (:button :onclick "window.print()" :class "btn btn-sm" :style "margin-left: 1rem;" "Print")))
+              
+              (if items
+                  (cl-who:htm
+                   (:table :class "data-table"
+                     (:thead
+                       (:tr
+                         (:th "Approved")
+                         (:th "MRF #")
+                         (:th "Part #")
+                         (:th "Description")
+                         (:th "Qty")
+                         (:th "U/I")
+                         (:th "Base")
+                         (:th "Building")
+                         (:th "Team")
+                         (:th "Report")))
+                     (:tbody
+                       (dolist (item items)
+                         (cl-who:htm
+                          (:tr
+                            (:td (cl-who:str (format-date-display (getf item :|approved_at|))))
+                            (:td (:a :href (format nil "/mrf/~A" (getf item :|mrf_id|))
+                                     (cl-who:str (getf item :|mrf_number|))))
+                            (:td (:code (cl-who:str (or (getf item :|part_number|) "-"))))
+                            (:td (cl-who:str (or (getf item :|description|) "")))
+                            (:td :class "text-center" (cl-who:fmt "~A" (or (getf item :|quantity_requested|) 0)))
+                            (:td (cl-who:str (or (getf item :|uom|) "")))
+                            (:td (cl-who:str (or (getf item :|base|) "")))
+                            (:td (cl-who:str (or (getf item :|building_number|) "")))
+                            (:td (cl-who:str (or (getf item :|team_number|) "")))
+                            (:td (if (getf item :|report_id|)
+                                     (cl-who:htm
+                                      (:a :href (format nil "/inspection-reports/~A" (getf item :|report_id|))
+                                          (cl-who:str (or (getf item :|report_number|) "View"))))
+                                     (cl-who:htm "-")))))))))
+                  (cl-who:htm
+                   (:p :class "text-center text-muted" "No items found for this period.")))))))))))

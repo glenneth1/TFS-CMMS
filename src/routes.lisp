@@ -1570,7 +1570,15 @@ function updateWoDatesFromWeek() {
            (render-page "Reports"
              (cl-who:with-html-output-to-string (s)
                (:div :class "page-header"
-                 (:h1 "Inspection Reports"))
+                 (:h1 "Reports"))
+               
+               ;; Quick links to other reports
+               (:div :class "card" :style "margin-bottom: 1rem;"
+                 (:h2 "Report Types")
+                 (:div :style "display: flex; gap: 1rem; flex-wrap: wrap;"
+                   (:a :href "/reports" :class "btn btn-primary" "Inspection Reports")
+                   (:a :href "/reports/inventory-issues" :class "btn btn-secondary" "Inventory Issues")))
+               
                (:div :class "card"
                  (:h2 "Generate Inspection Report")
                  (:p "Select a site and either a contract week OR a custom date range.")
@@ -3127,8 +3135,14 @@ function updateWeeklyDatesFromWeek() {
        (handle-sites))
       ((string= uri "/inventory")
        (handle-inventory))
+      ((string= uri "/inventory/new")
+       (handle-inventory-new))
       ((string= uri "/inventory/locations")
        (handle-inventory-locations))
+      ((cl-ppcre:scan "^/inventory/item/(\\d+)/edit$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/inventory/item/(\\d+)/edit$" uri)
+         (declare (ignore match))
+         (handle-inventory-item-edit (aref groups 0))))
       ((cl-ppcre:scan "^/inventory/item/(\\d+)$" uri)
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/inventory/item/(\\d+)$" uri)
          (declare (ignore match))
@@ -3145,6 +3159,8 @@ function updateWeeklyDatesFromWeek() {
        (handle-mrf-list))
       ((string= uri "/mrf/new")
        (handle-mrf-new))
+      ((string= uri "/reports/inventory-issues")
+       (handle-inventory-issue-report))
       ((cl-ppcre:scan "^/mrf/(\\d+)/print$" uri)
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/mrf/(\\d+)/print$" uri)
          (declare (ignore match))
@@ -3329,6 +3345,18 @@ function updateWeeklyDatesFromWeek() {
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/inspection-reports/(\\d+)/generate-pdf$" uri)
          (declare (ignore match))
          (handle-api-generate-pdf (aref groups 0))))
+      
+      ;; Inventory API endpoints
+      ((and (eq method :post) (string= uri "/api/inventory/item/create"))
+       (handle-api-inventory-item-create))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/inventory/item/(\\d+)/update$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/inventory/item/(\\d+)/update$" uri)
+         (declare (ignore match))
+         (handle-api-inventory-item-update (aref groups 0))))
+      ((and (eq method :post) (cl-ppcre:scan "^/api/inventory/item/(\\d+)/adjust$" uri))
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/api/inventory/item/(\\d+)/adjust$" uri)
+         (declare (ignore match))
+         (handle-api-inventory-item-adjust (aref groups 0))))
       
       ;; MRF API endpoints
       ((and (eq method :post) (string= uri "/api/mrf/create"))

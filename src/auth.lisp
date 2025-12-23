@@ -167,6 +167,12 @@
   "Check if user is QC Manager or Admin."
   (member (getf user :|role|) '("qc_manager" "Admin") :test #'string-equal))
 
+(defun user-can-manage-inventory-p (user)
+  "Check if user can manage inventory (property/materials staff or admin)."
+  (member (getf user :|role|) 
+          '("Admin" "property_manager" "materials_supervisor" "materials_specialist") 
+          :test #'string-equal))
+
 (defun get-qc-users ()
   "Get all QC users for assignment dropdown."
   (fetch-all "SELECT id, full_name, role FROM users WHERE role IN ('qc', 'qc_manager') AND active = 1 ORDER BY full_name"))

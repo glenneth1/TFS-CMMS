@@ -221,12 +221,16 @@
     GROUP BY l.id
     ORDER BY total_value DESC"))
 
-(defun update-inventory-quantity (item-id new-quantity &key performed-by notes)
+(defun update-inventory-quantity (item-id new-quantity &key performed-by notes transaction-type)
   "Update inventory quantity and record transaction."
   (let* ((item (get-inventory-item item-id))
          (old-quantity (or (getf item :|quantity|) 0))
          (difference (- new-quantity old-quantity))
-         (unit-cost (or (getf item :|unit_cost|) 0)))
+         (unit-cost (or (getf item :|unit_cost|) 0))
+         (txn-type (or transaction-type
+                       (cond ((> difference 0) "Receipt")
+                             ((< difference 0) "Issue")
+                             (t "Adjustment")))))
     ;; Update the item
     (execute-sql 
      "UPDATE inventory_items 
@@ -239,11 +243,58 @@
       (item_id, transaction_type, quantity, quantity_before, quantity_after,
        unit_cost, total_cost, performed_by, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-     item-id 
-     (if (> difference 0) "Receipt" "Adjustment")
+     item-id txn-type
      (abs difference) old-quantity new-quantity
      unit-cost (* (abs difference) unit-cost)
      performed-by notes)))
+
+(defun update-inventory-item (item-id &key part-number description make uom location-id 
+                                        unit-cost property-type property-usage notes)
+  "Update inventory item details."
+  (let ((item (get-inventory-item item-id)))
+    (when item
+      (let ((quantity (or (getf item :|quantity|) 0))
+            (new-unit-cost (or unit-cost (getf item :|unit_cost|) 0)))
+        (execute-sql 
+         "UPDATE inventory_items 
+          SET part_number = COALESCE(?, part_number),
+              description = COALESCE(?, description),
+              make = COALESCE(?, make),
+              uom = COALESCE(?, uom),
+              location_id = COALESCE(?, location_id),
+              unit_cost = COALESCE(?, unit_cost),
+              total_cost = quantity * COALESCE(?, unit_cost),
+              property_type = COALESCE(?, property_type),
+              property_usage = COALESCE(?, property_usage),
+              notes = COALESCE(?, notes),
+              updated_at = datetime('now')
+          WHERE id = ?"
+         part-number description make uom location-id 
+         unit-cost new-unit-cost property-type property-usage notes item-id)))))
+
+(defun create-inventory-item (&key item-number description make part-number uom quantity 
+                                   unit-cost location-id property-type property-usage notes)
+  "Create a new inventory item."
+  (let* ((next-item-number (or item-number
+                               (1+ (or (getf (fetch-one "SELECT MAX(item_number) as max_num FROM inventory_items") 
+                                             :|max_num|) 0))))
+         (qty (or quantity 0))
+         (cost (or unit-cost 0)))
+    (execute-sql 
+     "INSERT INTO inventory_items 
+      (item_number, description, make, part_number, uom, quantity, unit_cost, total_cost,
+       location_id, property_type, property_usage, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+     next-item-number description make part-number (or uom "EA") qty cost (* qty cost)
+     location-id (or property-type "Material") (or property-usage "Consume") notes)
+    (getf (fetch-one "SELECT last_insert_rowid() as id") :|id|)))
+
+(defun get-item-transactions (item-id &key limit)
+  "Get transaction history for an inventory item."
+  (let ((sql "SELECT * FROM inventory_transactions WHERE item_id = ? ORDER BY created_at DESC"))
+    (when limit
+      (setf sql (format nil "~A LIMIT ~A" sql limit)))
+    (fetch-all sql item-id)))
 
 ;;; ============================================================
 ;;; Inventory UI Handlers
@@ -251,7 +302,9 @@
 
 (defun handle-inventory ()
   "Handle main inventory page."
-  (let* ((search (hunchentoot:parameter "search"))
+  (let* ((user (get-current-user))
+         (can-edit (and user (user-can-manage-inventory-p user)))
+         (search (hunchentoot:parameter "search"))
          (location-param (hunchentoot:parameter "location"))
          (location-id (when (and location-param (not (string= location-param "")))
                         (parse-integer location-param :junk-allowed t)))
@@ -282,6 +335,9 @@
                (:span :class "badge badge-warning" (cl-who:fmt "~:D Equipment" (or (getf stats :|equipment_count|) 0)))
                (:span :class "badge badge-secondary" (cl-who:fmt "~:D Locations" (or (getf stats :|location_count|) 0))))
              (:div :class "header-actions"
+               (when can-edit
+                 (cl-who:htm
+                  (:a :href "/inventory/new" :class "btn btn-success btn-sm" "Add Item")))
                (:a :href "/inventory/locations" :class "btn btn-secondary btn-sm" "Locations")
                (:a :href "/inventory/audit/new" :class "btn btn-primary btn-sm" "New Audit"))))
          
@@ -386,7 +442,11 @@
 (defun handle-inventory-item-detail (id-str)
   "Handle inventory item detail page."
   (let* ((id (parse-integer id-str :junk-allowed t))
-         (item (when id (get-inventory-item id))))
+         (item (when id (get-inventory-item id)))
+         (user (get-current-user))
+         (can-edit (and user (user-can-manage-inventory-p user)))
+         (transactions (when id (get-item-transactions id :limit 20)))
+         (locations (get-inventory-locations)))
     (if item
         (html-response
          (render-page (format nil "Item #~A" (getf item :|item_number|))
@@ -395,7 +455,11 @@
                (:h1 (cl-who:fmt "Item #~A: ~A" 
                                 (getf item :|item_number|)
                                 (getf item :|description|)))
-               (:a :href "/inventory" :class "btn btn-secondary" "Back to Inventory"))
+               (:div :style "display: flex; gap: 0.5rem;"
+                 (:a :href "/inventory" :class "btn btn-secondary" "Back to Inventory")
+                 (when can-edit
+                   (cl-who:htm
+                    (:a :href (format nil "/inventory/item/~A/edit" id) :class "btn btn-primary" "Edit Item")))))
              
              (:div :class "card"
                (:h2 "Item Details")
@@ -420,7 +484,7 @@
                    (:span :class "detail-value" (cl-who:str (getf item :|uom|))))
                  (:div :class "detail-row"
                    (:span :class "detail-label" "Quantity")
-                   (:span :class "detail-value" (cl-who:fmt "~:D" (round (or (getf item :|quantity|) 0)))))
+                   (:span :class "detail-value" (:strong (cl-who:fmt "~:D" (round (or (getf item :|quantity|) 0))))))
                  (:div :class "detail-row"
                    (:span :class "detail-label" "Unit Cost")
                    (:span :class "detail-value" (cl-who:fmt "$~,2F" (or (getf item :|unit_cost|) 0))))
@@ -440,14 +504,214 @@
                  (:div :class "detail-row"
                    (:span :class "detail-label" "Last Audit")
                    (:span :class "detail-value" (cl-who:str (if (getf item :|last_audit_date|)
-                                                                       (format-date-display (getf item :|last_audit_date|))
-                                                                       "Never")))))))))
+                                                                (format-date-display (getf item :|last_audit_date|))
+                                                                "Never"))))))
+             
+             ;; Adjust Quantity section (only for authorized users)
+             (when can-edit
+               (cl-who:htm
+                (:div :class "card" :style "margin-top: 1rem;"
+                  (:h2 "Adjust Quantity")
+                  (:form :method "post" :action (format nil "/api/inventory/item/~A/adjust" id)
+                    (:div :style "display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;"
+                      (:div :class "form-group"
+                        (:label "Current Quantity")
+                        (:input :type "text" :disabled t 
+                                :value (format nil "~:D" (round (or (getf item :|quantity|) 0)))))
+                      (:div :class "form-group"
+                        (:label "New Quantity *")
+                        (:input :type "number" :name "new_quantity" :required t :min "0" :step "1"
+                                :value (round (or (getf item :|quantity|) 0))))
+                      (:div :class "form-group"
+                        (:label "Reason *")
+                        (:select :name "transaction_type" :required t
+                          (:option :value "Receipt" "Receipt (Stock In)")
+                          (:option :value "Issue" "Issue (Stock Out)")
+                          (:option :value "Adjustment" "Adjustment (Correction)")
+                          (:option :value "Damage" "Damage/Loss")
+                          (:option :value "Return" "Return")))
+                      (:div :class "form-group"
+                        (:label "Notes")
+                        (:input :type "text" :name "notes" :placeholder "Optional notes...")))
+                    (:button :type "submit" :class "btn btn-primary" "Update Quantity")))))
+             
+             ;; Transaction History
+             (:div :class "card" :style "margin-top: 1rem;"
+               (:h2 "Transaction History")
+               (if transactions
+                   (cl-who:htm
+                    (:table :class "data-table"
+                      (:thead
+                        (:tr
+                          (:th "Date")
+                          (:th "Type")
+                          (:th "Qty")
+                          (:th "Before")
+                          (:th "After")
+                          (:th "By")
+                          (:th "Notes")))
+                      (:tbody
+                        (dolist (txn transactions)
+                          (cl-who:htm
+                           (:tr
+                             (:td (cl-who:str (format-date-display (getf txn :|created_at|))))
+                             (:td (:span :class (format nil "badge badge-~A"
+                                                        (cond ((string= (getf txn :|transaction_type|) "Receipt") "success")
+                                                              ((string= (getf txn :|transaction_type|) "Issue") "warning")
+                                                              (t "secondary")))
+                                         (cl-who:str (getf txn :|transaction_type|))))
+                             (:td :class "text-center" (cl-who:fmt "~:D" (round (or (getf txn :|quantity|) 0))))
+                             (:td :class "text-center" (cl-who:fmt "~:D" (round (or (getf txn :|quantity_before|) 0))))
+                             (:td :class "text-center" (cl-who:fmt "~:D" (round (or (getf txn :|quantity_after|) 0))))
+                             (:td (cl-who:str (or (getf txn :|performed_by|) "—")))
+                             (:td (cl-who:str (or (getf txn :|notes|) "—")))))))))
+                   (cl-who:htm
+                    (:p :class "text-muted text-center" "No transactions recorded yet.")))))))
         (html-response
          (render-page "Item Not Found"
            (cl-who:with-html-output-to-string (s)
              (:div :class "card"
                (:h2 "Item Not Found")
                (:p "The requested inventory item could not be found.")
+               (:a :href "/inventory" :class "btn" "Back to Inventory"))))))))
+
+(defun handle-inventory-item-edit (id-str)
+  "Handle inventory item edit page."
+  (let* ((id (parse-integer id-str :junk-allowed t))
+         (item (when id (get-inventory-item id)))
+         (user (get-current-user))
+         (locations (get-inventory-locations)))
+    (if (and item user (user-can-manage-inventory-p user))
+        (html-response
+         (render-page (format nil "Edit Item #~A" (getf item :|item_number|))
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 (cl-who:fmt "Edit Item #~A" (getf item :|item_number|)))
+               (:a :href (format nil "/inventory/item/~A" id) :class "btn btn-secondary" "Cancel"))
+             
+             (:div :class "card"
+               (:form :method "post" :action (format nil "/api/inventory/item/~A/update" id)
+                 (:div :style "display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;"
+                   (:div :class "form-group"
+                     (:label "Item Number")
+                     (:input :type "text" :disabled t :value (getf item :|item_number|)))
+                   (:div :class "form-group"
+                     (:label "Part Number")
+                     (:input :type "text" :name "part_number" 
+                             :value (or (getf item :|part_number|) "")))
+                   (:div :class "form-group"
+                     (:label "Description *")
+                     (:input :type "text" :name "description" :required t
+                             :value (or (getf item :|description|) "")))
+                   (:div :class "form-group"
+                     (:label "Make/Manufacturer")
+                     (:input :type "text" :name "make" 
+                             :value (or (getf item :|make|) "")))
+                   (:div :class "form-group"
+                     (:label "Unit of Measure")
+                     (:input :type "text" :name "uom" 
+                             :value (or (getf item :|uom|) "EA")))
+                   (:div :class "form-group"
+                     (:label "Location")
+                     (:select :name "location_id"
+                       (:option :value "" "-- No Location --")
+                       (dolist (loc locations)
+                         (cl-who:htm
+                          (:option :value (getf loc :|id|)
+                                   :selected (when (eql (getf loc :|id|) (getf item :|location_id|)) "selected")
+                                   (cl-who:str (getf loc :|location_code|)))))))
+                   (:div :class "form-group"
+                     (:label "Unit Cost ($)")
+                     (:input :type "number" :name "unit_cost" :step "0.01" :min "0"
+                             :value (or (getf item :|unit_cost|) 0)))
+                   (:div :class "form-group"
+                     (:label "Property Type")
+                     (:select :name "property_type"
+                       (:option :value "Material" :selected (when (string= (getf item :|property_type|) "Material") "selected") "Material")
+                       (:option :value "Equipment" :selected (when (string= (getf item :|property_type|) "Equipment") "selected") "Equipment")))
+                   (:div :class "form-group"
+                     (:label "Property Usage")
+                     (:select :name "property_usage"
+                       (:option :value "Consume" :selected (when (string= (getf item :|property_usage|) "Consume") "selected") "Consume")
+                       (:option :value "Reuse" :selected (when (string= (getf item :|property_usage|) "Reuse") "selected") "Reuse")
+                       (:option :value "Return" :selected (when (string= (getf item :|property_usage|) "Return") "selected") "Return"))))
+                 (:div :class "form-group"
+                   (:label "Notes")
+                   (:textarea :name "notes" :rows "3" :style "width: 100%;"
+                              (cl-who:str (or (getf item :|notes|) ""))))
+                 (:div :class "form-actions"
+                   (:button :type "submit" :class "btn btn-primary" "Save Changes")))))))
+        (html-response
+         (render-page "Access Denied"
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "card"
+               (:h2 "Access Denied")
+               (:p "You do not have permission to edit inventory items.")
+               (:a :href "/inventory" :class "btn" "Back to Inventory"))))))))
+
+(defun handle-inventory-new ()
+  "Handle new inventory item page."
+  (let* ((user (get-current-user))
+         (locations (get-inventory-locations)))
+    (if (and user (user-can-manage-inventory-p user))
+        (html-response
+         (render-page "Add New Inventory Item"
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 "Add New Inventory Item")
+               (:a :href "/inventory" :class "btn btn-secondary" "Cancel"))
+             
+             (:div :class "card"
+               (:form :method "post" :action "/api/inventory/item/create"
+                 (:div :style "display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;"
+                   (:div :class "form-group"
+                     (:label "Part Number")
+                     (:input :type "text" :name "part_number"))
+                   (:div :class "form-group"
+                     (:label "Description *")
+                     (:input :type "text" :name "description" :required t))
+                   (:div :class "form-group"
+                     (:label "Make/Manufacturer")
+                     (:input :type "text" :name "make"))
+                   (:div :class "form-group"
+                     (:label "Unit of Measure")
+                     (:input :type "text" :name "uom" :value "EA"))
+                   (:div :class "form-group"
+                     (:label "Initial Quantity")
+                     (:input :type "number" :name "quantity" :min "0" :step "1" :value "0"))
+                   (:div :class "form-group"
+                     (:label "Unit Cost ($)")
+                     (:input :type "number" :name "unit_cost" :step "0.01" :min "0" :value "0"))
+                   (:div :class "form-group"
+                     (:label "Location")
+                     (:select :name "location_id"
+                       (:option :value "" "-- No Location --")
+                       (dolist (loc locations)
+                         (cl-who:htm
+                          (:option :value (getf loc :|id|)
+                                   (cl-who:str (getf loc :|location_code|)))))))
+                   (:div :class "form-group"
+                     (:label "Property Type")
+                     (:select :name "property_type"
+                       (:option :value "Material" "Material")
+                       (:option :value "Equipment" "Equipment")))
+                   (:div :class "form-group"
+                     (:label "Property Usage")
+                     (:select :name "property_usage"
+                       (:option :value "Consume" "Consume")
+                       (:option :value "Reuse" "Reuse")
+                       (:option :value "Return" "Return"))))
+                 (:div :class "form-group"
+                   (:label "Notes")
+                   (:textarea :name "notes" :rows "3" :style "width: 100%;"))
+                 (:div :class "form-actions"
+                   (:button :type "submit" :class "btn btn-primary" "Create Item")))))))
+        (html-response
+         (render-page "Access Denied"
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "card"
+               (:h2 "Access Denied")
+               (:p "You do not have permission to add inventory items.")
                (:a :href "/inventory" :class "btn" "Back to Inventory"))))))))
 
 (defun handle-inventory-audit-new ()
@@ -478,3 +742,94 @@
          (:h2 "Audit Details")
          (:p "Audit detail view is under development.")
          (:a :href "/inventory" :class "btn" "Back to Inventory"))))))
+
+;;; ============================================================
+;;; Inventory API Handlers
+;;; ============================================================
+
+(defun handle-api-inventory-item-create ()
+  "Handle creating a new inventory item."
+  (let ((user (get-current-user)))
+    (if (and user (user-can-manage-inventory-p user))
+        (let* ((description (hunchentoot:parameter "description"))
+               (part-number (hunchentoot:parameter "part_number"))
+               (make (hunchentoot:parameter "make"))
+               (uom (or (hunchentoot:parameter "uom") "EA"))
+               (quantity (parse-integer (or (hunchentoot:parameter "quantity") "0") :junk-allowed t))
+               (unit-cost (let ((cost-str (hunchentoot:parameter "unit_cost")))
+                            (when cost-str (parse-float cost-str))))
+               (location-id (let ((loc-str (hunchentoot:parameter "location_id")))
+                              (when (and loc-str (not (string= loc-str "")))
+                                (parse-integer loc-str :junk-allowed t))))
+               (property-type (hunchentoot:parameter "property_type"))
+               (property-usage (hunchentoot:parameter "property_usage"))
+               (notes (hunchentoot:parameter "notes")))
+          (if description
+              (let ((new-id (create-inventory-item 
+                             :description description
+                             :part-number (when (and part-number (not (string= part-number ""))) part-number)
+                             :make (when (and make (not (string= make ""))) make)
+                             :uom uom
+                             :quantity (or quantity 0)
+                             :unit-cost (or unit-cost 0)
+                             :location-id location-id
+                             :property-type property-type
+                             :property-usage property-usage
+                             :notes (when (and notes (not (string= notes ""))) notes))))
+                (hunchentoot:redirect (format nil "/inventory/item/~A" new-id)))
+              (hunchentoot:redirect "/inventory/new")))
+        (hunchentoot:redirect "/unauthorized"))))
+
+(defun handle-api-inventory-item-update (id-str)
+  "Handle updating an inventory item."
+  (let ((user (get-current-user))
+        (id (parse-integer id-str :junk-allowed t)))
+    (if (and user (user-can-manage-inventory-p user) id)
+        (let* ((description (hunchentoot:parameter "description"))
+               (part-number (hunchentoot:parameter "part_number"))
+               (make (hunchentoot:parameter "make"))
+               (uom (hunchentoot:parameter "uom"))
+               (unit-cost (let ((cost-str (hunchentoot:parameter "unit_cost")))
+                            (when cost-str (parse-float cost-str))))
+               (location-id (let ((loc-str (hunchentoot:parameter "location_id")))
+                              (when (and loc-str (not (string= loc-str "")))
+                                (parse-integer loc-str :junk-allowed t))))
+               (property-type (hunchentoot:parameter "property_type"))
+               (property-usage (hunchentoot:parameter "property_usage"))
+               (notes (hunchentoot:parameter "notes")))
+          (update-inventory-item id
+                                 :description description
+                                 :part-number part-number
+                                 :make make
+                                 :uom uom
+                                 :unit-cost unit-cost
+                                 :location-id location-id
+                                 :property-type property-type
+                                 :property-usage property-usage
+                                 :notes notes)
+          (hunchentoot:redirect (format nil "/inventory/item/~A" id)))
+        (hunchentoot:redirect "/unauthorized"))))
+
+(defun handle-api-inventory-item-adjust (id-str)
+  "Handle adjusting inventory quantity."
+  (let ((user (get-current-user))
+        (id (parse-integer id-str :junk-allowed t)))
+    (if (and user (user-can-manage-inventory-p user) id)
+        (let* ((new-quantity (parse-integer (or (hunchentoot:parameter "new_quantity") "0") :junk-allowed t))
+               (transaction-type (hunchentoot:parameter "transaction_type"))
+               (notes (hunchentoot:parameter "notes"))
+               (performed-by (getf user :|full_name|)))
+          (update-inventory-quantity id new-quantity
+                                     :performed-by performed-by
+                                     :notes notes
+                                     :transaction-type transaction-type)
+          (hunchentoot:redirect (format nil "/inventory/item/~A" id)))
+        (hunchentoot:redirect "/unauthorized"))))
+
+(defun parse-float (str)
+  "Parse a string to a float, returning nil on failure."
+  (when (and str (not (string= str "")))
+    (handler-case
+        (let ((result (read-from-string str)))
+          (when (numberp result) (float result)))
+      (error () nil))))
