@@ -805,3 +805,827 @@
              (:button :type "submit" :class "btn btn-primary" "Create Report")
              (:a :href (if wo-id (format nil "/work-orders/~A" wo-id) "/work-orders")
                  :class "btn" "Cancel"))))))))
+
+(defun handle-inspection-report-history (id)
+  "View rejection history for a report."
+  (let* ((report-id (parse-int id))
+         (report (get-inspection-report report-id))
+         (history (fetch-all 
+                   "SELECT * FROM rejection_history WHERE report_id = ? ORDER BY rejection_number DESC"
+                   report-id)))
+    (if report
+        (html-response
+         (render-page (format nil "Rejection History: ~A" (getf report :|report_number|))
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 "Rejection History")
+               (:p "Report: " (:strong (cl-who:str (getf report :|report_number|)))))
+             (:section :class "card"
+               (:h2 (cl-who:str (format nil "~A Rejection~:P" (or (getf report :|rejection_count|) 0))))
+               (if history
+                   (cl-who:htm
+                    (:table :class "data-table"
+                      (:thead
+                        (:tr (:th "#") (:th "Team") (:th "Submitted") 
+                             (:th "Rejected") (:th "QC Reviewer") (:th "Comments")))
+                      (:tbody
+                        (dolist (h history)
+                          (cl-who:htm
+                           (:tr
+                             (:td (cl-who:str (getf h :|rejection_number|)))
+                             (:td (cl-who:str (or (getf h :|team_number|) "-")))
+                             (:td (cl-who:str (or (getf h :|submitted_at|) "-")))
+                             (:td (cl-who:str (or (getf h :|rejected_at|) "-")))
+                             (:td (cl-who:str (or (getf h :|qc_name|) "-")))
+                             (:td (cl-who:str (or (getf h :|qc_comments|) "-")))))))))
+                   (cl-who:htm
+                    (:p :class "empty-state" "No rejection history recorded yet.")
+                    (:p :class "text-muted" "Note: History is only recorded for rejections after this feature was added."))))
+             (:div :class "page-actions"
+               (:a :href (format nil "/inspection-reports/~A" report-id) :class "btn" "Back to Report")
+               (:a :href "/admin/reports" :class "btn" "Reports History")))))
+        (redirect-to "/inspection-reports"))))
+
+
+(defun handle-inspection-report-detail (id)
+  "View/edit an inspection report."
+  (let* ((report-id (parse-int id))
+         (report (get-inspection-report report-id))
+         (deficiencies (get-report-deficiencies report-id))
+         (voltage (getf report :|system_voltage|))
+         (code-source (get-code-source voltage))
+         (code-refs (if (string= code-source "NEC") *nec-code-references* *bs7671-code-references*)))
+    (if report
+        (html-response
+         (render-page (format nil "Report: ~A" (getf report :|report_number|))
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 (cl-who:str (getf report :|report_number|)))
+               (:span :class (format nil "badge badge-~A" 
+                                     (string-downcase (substitute #\- #\Space (getf report :|status|))))
+                      (cl-who:str (getf report :|status|))))
+             
+             ;; Report Details
+             (:div :class "wo-detail-grid"
+               (:section :class "card"
+                 (:h2 "Report Details")
+                 (:dl :class "detail-list"
+                   (:dt "TAG-ID") (:dd (cl-who:str (getf report :|tag_id|)))
+                   (:dt "Work Order") (:dd (cl-who:str (getf report :|work_order_number|)))
+                   (:dt "Site") (:dd (cl-who:str (format nil "~A (~A)" 
+                                                         (getf report :|site_name|)
+                                                         (getf report :|site_code|))))
+                   (:dt "Building") (:dd (cl-who:str (getf report :|building_number|)))
+                   (:dt "Building Type") (:dd (cl-who:str (or (getf report :|building_type|) "-")))
+                   (:dt "System Voltage") (:dd (cl-who:str (getf report :|system_voltage|)))
+                   (:dt "Code Standard") (:dd (cl-who:str code-source))))
+               
+               (:section :class "card"
+                 (:h2 "Inspection Info")
+                 (:dl :class "detail-list"
+                   (:dt "Phase") (:dd (cl-who:str (getf report :|inspection_phase|)))
+                   (:dt "Date") (:dd (cl-who:str (format-date-display (getf report :|inspection_date|))))
+                   (:dt "Team") (:dd (cl-who:str (getf report :|team_number|)))
+                   (:dt "Overall Rating") (:dd (cl-who:str (or (getf report :|overall_rating|) "Not set")))
+                   (:dt "Location") (:dd (cl-who:str (or (getf report :|location_description|) "-"))))))
+             
+             ;; Building Image Section
+             (:section :class "card"
+               (:h2 "Building Picture")
+               (if (getf report :|building_image_path|)
+                   (cl-who:htm
+                    (:div :class "building-image-container"
+                      (:a :href (format nil "/uploads/~A" (getf report :|building_image_path|))
+                          :target "_blank"
+                          (:img :src (format nil "/uploads/~A" (getf report :|building_image_path|))
+                                :class "building-image"
+                                :alt "Building photo"))))
+                   (cl-who:htm
+                    (:p :class "text-muted" "No building image uploaded yet.")))
+               (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)
+                 (cl-who:htm
+                  (:form :method "post" :action (format nil "/api/inspection-reports/~A/building-image" report-id)
+                         :enctype "multipart/form-data" :style "margin-top: 1rem;"
+                    (:div :class "form-group"
+                      (:label "Upload Building Image")
+                      (:input :type "file" :name "building_image" :accept "image/*"))
+                    (:button :type "submit" :class "btn" "Upload Image")))))
+             
+             ;; Update Report Form (if Draft or QC Rejected)
+             (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)
+               (cl-who:htm
+                (:section :class "card"
+                  (:h2 "Update Report")
+                  (:form :method "post" :action (format nil "/api/inspection-reports/~A/update" report-id)
+                    (:div :class "form-row"
+                      (:div :class "form-group"
+                        (:label "Inspection Date")
+                        (:input :type "date" :name "inspection_date" 
+                                :value (or (getf report :|inspection_date|) "")))
+                      (:div :class "form-group"
+                        (:label "Team Number")
+                        (:input :type "text" :name "team_number" 
+                                :value (or (getf report :|team_number|) "")
+                                :placeholder "e.g., Team 102")))
+                    (:div :class "form-row"
+                      (:div :class "form-group"
+                        (:label "Building Type")
+                        (:select :name "building_type"
+                          (:option :value "" "-- Select --")
+                          (dolist (bt '("Administrative" "Barracks" "Dining Facility" "Maintenance" 
+                                        "Storage" "Medical" "Recreation" "Communications" "Power Generation" "Other"))
+                            (cl-who:htm
+                             (:option :value bt
+                                      :selected (string= bt (getf report :|building_type|))
+                                      (cl-who:str bt))))))
+                      (:div :class "form-group"
+                        (:label "Building Number")
+                        (:input :type "text" :name "building_number"
+                                :value (or (getf report :|building_number|) ""))))
+                    (:div :class "form-row"
+                      (:div :class "form-group"
+                        (:label "Overall Rating")
+                        (:select :name "overall_rating"
+                          (:option :value "" "-- Select --")
+                          (dolist (r *overall-ratings*)
+                            (cl-who:htm 
+                             (:option :value r 
+                                      :selected (string= r (getf report :|overall_rating|))
+                                      (cl-who:str r))))))
+                      (:div :class "form-group"
+                        (:label "MRF Needed?")
+                        (:select :name "mrf_needed"
+                          (:option :value "No" :selected (string= "No" (getf report :|mrf_needed|)) "No")
+                          (:option :value "Yes" :selected (string= "Yes" (getf report :|mrf_needed|)) "Yes"))))
+                    (:div :class "form-group"
+                      (:label "Location Description")
+                      (:textarea :name "location_description" :rows "2"
+                                 (cl-who:str (or (getf report :|location_description|) ""))))
+                    (:div :class "form-group"
+                      (:label "Summary of Findings")
+                      (:textarea :name "summary_of_findings" :rows "3"
+                                 (cl-who:str (or (getf report :|summary_of_findings|) ""))))
+                    (:button :type "submit" :class "btn btn-primary" "Save Changes")))))
+             
+             ;; Deficiencies Section
+             (:section :class "card"
+               (:h2 (cl-who:str (format nil "Deficiencies (~A)" (length deficiencies))))
+               (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)
+                 (cl-who:htm
+                  (:div :class "page-actions" :style "margin-bottom: 1rem;"
+                    (:a :href (format nil "/inspection-reports/~A/deficiency/new" report-id)
+                        :class "btn btn-primary" "Add Deficiency"))))
+               (if deficiencies
+                   (cl-who:htm
+                    (:table :class "data-table"
+                      (:thead
+                        (:tr
+                          (:th "#")
+                          (:th "RAC")
+                          (:th "Location")
+                          (:th "Category")
+                          (:th "Status")
+                          (:th "Actions")))
+                      (:tbody
+                        (dolist (def deficiencies)
+                          (cl-who:htm
+                           (:tr
+                             (:td (cl-who:str (getf def :|deficiency_number|)))
+                             (:td (:span :class (format nil "badge rac-~A" (getf def :|rac_score|))
+                                         (cl-who:str (format nil "RAC ~A" (getf def :|rac_score|)))))
+                             (:td 
+                               (cl-who:str (or (getf def :|location_description|) "-"))
+                               (when (getf def :|image_path|)
+                                 (cl-who:htm
+                                  (:br)
+                                  (:a :href (format nil "/uploads/~A" (getf def :|image_path|))
+                                      :target "_blank"
+                                      (:img :src (format nil "/uploads/~A" (getf def :|image_path|))
+                                            :class "deficiency-thumbnail"
+                                            :alt "Deficiency photo")))))
+                             (:td (cl-who:str (or (getf def :|deficiency_category|) "-")))
+                             (:td (cl-who:str (or (getf def :|deficiency_status|) "-")))
+                             (:td
+                               (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)
+                                 (cl-who:htm
+                                  (:a :href (format nil "/deficiency/~A/edit" (getf def :|id|))
+                                      :class "btn btn-sm" "Edit")
+                                  " "
+                                  (:form :method "post" 
+                                         :action (format nil "/api/deficiency/~A/delete" (getf def :|id|))
+                                         :style "display:inline;"
+                                         :onsubmit "return confirm('Delete this deficiency?');"
+                                    (:input :type "hidden" :name "report_id" :value (princ-to-string report-id))
+                                    (:button :type "submit" :class "btn btn-sm btn-danger" "Delete")))))))))))
+                   (cl-who:htm
+                    (:p :class "empty-state" "No deficiencies recorded yet."))))
+             
+             ;; MRF Section (if MRF Required = Yes)
+             (when (string= "Yes" (getf report :|mrf_needed|))
+               (let ((mrf (get-mrf-by-report report-id)))
+                 (cl-who:htm
+                  (:section :class "card"
+                    (:h2 "Material Request Form (MRF)")
+                    (if mrf
+                        (cl-who:htm
+                         (:dl :class "detail-list"
+                           (:dt "MRF Number") (:dd (cl-who:str (getf mrf :|mrf_number|)))
+                           (:dt "Status") (:dd (:span :class (format nil "badge badge-~A" 
+                                                                      (string-downcase (getf mrf :|status|)))
+                                                      (cl-who:str (getf mrf :|status|))))
+                           (:dt "Items") (:dd (cl-who:str (format nil "~A item(s)" 
+                                                                   (or (getf mrf :|item_count|) 0)))))
+                         (:div :class "page-actions" :style "margin-top: 1rem;"
+                           (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)
+                             (cl-who:htm
+                              (:a :href (format nil "/mrf/~A" (getf mrf :|id|))
+                                  :class "btn btn-primary" "Edit MRF Items")))
+                           (:a :href (format nil "/mrf/~A/print" (getf mrf :|id|))
+                               :class "btn" :target "_blank" "Print MRF")))
+                        (cl-who:htm
+                         (:p :class "text-muted" "MRF not yet generated.")
+                         (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)
+                           (cl-who:htm
+                            (:form :method "post" :action (format nil "/api/inspection-reports/~A/generate-mrf" report-id)
+                              (:button :type "submit" :class "btn btn-primary" "Generate MRF"))))))))))
+             
+             ;; QC Section
+             (:section :class "card"
+               (:h2 "Signatures & QC")
+               (cond
+                 ;; Draft - can submit for QC
+                 ((string= (getf report :|status|) "Draft")
+                  (let ((has-mrf (and (string= "Yes" (getf report :|mrf_needed|))
+                                      (get-mrf-by-report report-id))))
+                    (cl-who:htm
+                     (:form :method "post" :action (format nil "/api/inspection-reports/~A/submit" report-id)
+                       (:div :class "form-row"
+                         (:div :class "form-group required"
+                           (:label "Inspector 1 Name")
+                           (:input :type "text" :name "inspector1_name" :required t))
+                         (:div :class "form-group"
+                           (:label "Inspector 2 Name")
+                           (:input :type "text" :name "inspector2_name")))
+                       (:button :type "submit" :class "btn btn-primary" 
+                                (cl-who:str (if has-mrf "Submit Report & MRF for QC Review" "Submit for QC Review")))))))
+                 
+                 ;; Pending QC - QC can approve/reject
+                 ((string= (getf report :|status|) "Pending QC")
+                  (cl-who:htm
+                   (:p "Inspector 1: " (:strong (cl-who:str (getf report :|inspector1_name|)))
+                       " (signed " (cl-who:str (getf report :|inspector1_signed_at|)) ")")
+                   (when (getf report :|inspector2_name|)
+                     (cl-who:htm
+                      (:p "Inspector 2: " (:strong (cl-who:str (getf report :|inspector2_name|)))
+                          " (signed " (cl-who:str (getf report :|inspector2_signed_at|)) ")")))
+                   (:hr)
+                   (:form :method "post" :id "qc-form"
+                     (:div :class "form-group required"
+                       (:label "QC Name")
+                       (:input :type "text" :name "qc_name" :required t
+                               :value (getf (get-current-user) :|full_name|)))
+                     (:div :class "form-group"
+                       (:label "Comments")
+                       (:textarea :name "qc_comments" :rows "2"))
+                     (:div :class "form-actions"
+                       (:button :type "submit" :class "btn btn-primary" 
+                                :formaction (format nil "/api/inspection-reports/~A/qc-approve" report-id)
+                                "Approve")
+                       (:button :type "submit" :class "btn btn-danger" :style "margin-left: 0.5rem;"
+                                :formaction (format nil "/api/inspection-reports/~A/qc-reject" report-id)
+                                "Reject")))))
+                 
+                 ;; QC Rejected - show comments and allow resubmit
+                 ((string= (getf report :|status|) "QC Rejected")
+                  (let ((rejection-count (or (getf report :|rejection_count|) 0)))
+                    (cl-who:htm
+                     (:div :class "alert alert-danger"
+                       (:strong "QC Rejected by: ") (cl-who:str (getf report :|qc_name|))
+                       (when (> rejection-count 0)
+                         (cl-who:htm
+                          (:span :class "rejection-count" 
+                                 (cl-who:str (format nil " (Rejection #~A)" rejection-count)))))
+                       (:p "Comments: " (cl-who:str (or (getf report :|qc_comments|) "None."))))
+                     (:p "Please address the issues above and resubmit.")
+                     (:hr)
+                     (:form :method "post" :action (format nil "/api/inspection-reports/~A/submit" report-id)
+                       (:div :class "form-row"
+                         (:div :class "form-group required"
+                           (:label "Inspector 1 Name")
+                           (:input :type "text" :name "inspector1_name" :required t
+                                   :value (or (getf report :|inspector1_name|) "")))
+                         (:div :class "form-group"
+                           (:label "Inspector 2 Name")
+                           (:input :type "text" :name "inspector2_name"
+                                   :value (or (getf report :|inspector2_name|) ""))))
+                       (:button :type "submit" :class "btn btn-primary" "Resubmit for QC Review")))))
+                 
+                 ;; QC Approved or Complete
+                 (t
+                  (cl-who:htm
+                   (:p "Inspector 1: " (:strong (cl-who:str (getf report :|inspector1_name|))))
+                   (when (getf report :|inspector2_name|)
+                     (cl-who:htm
+                      (:p "Inspector 2: " (:strong (cl-who:str (getf report :|inspector2_name|))))))
+                   (:p "QC: " (:strong (cl-who:str (getf report :|qc_name|)))
+                       " (approved " (cl-who:str (getf report :|qc_signed_at|)) ")")))))
+             
+             (:div :class "page-actions"
+               (when (string= (getf report :|status|) "Complete")
+                 (cl-who:htm
+                  (:a :href (format nil "/api/inspection-reports/~A/generate-pdf" report-id)
+                      :target "_blank"
+                      :class "btn btn-primary" "Download PDF")
+                  ;; Show Re-inspection button for completed Initial Inspections
+                  (when (or (string= (getf report :|inspection_phase|) "Initial Inspection")
+                            (string= (getf report :|inspection_phase|) "Initial"))
+                    (cl-who:htm
+                     (:a :href (format nil "/inspection-reports/~A/reinspection" report-id)
+                         :class "btn btn-secondary" "Create Re-inspection")))))
+               (:a :href (format nil "/work-orders/~A" (getf report :|wo_id|)) :class "btn" "Back to Work Order")
+               (:a :href "/inspection-reports" :class "btn" "All Reports")))))
+        (html-response
+         (render-page "Not Found"
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "empty-state"
+               (:h1 "Report Not Found")
+               (:a :href "/inspection-reports" :class "btn" "Back to Reports"))))))))
+
+
+(defun handle-reinspection-form (original-report-id-str)
+  "Form to create a re-inspection report from a completed initial inspection."
+  (let* ((original-id (parse-int original-report-id-str))
+         (original (get-inspection-report original-id))
+         (today (multiple-value-bind (sec min hour day month year)
+                    (decode-universal-time (get-universal-time))
+                  (declare (ignore sec min hour))
+                  (format nil "~4,'0D-~2,'0D-~2,'0D" year month day))))
+    (if (and original 
+             (string= (getf original :|status|) "Complete")
+             (or (string= (getf original :|inspection_phase|) "Initial Inspection")
+                 (string= (getf original :|inspection_phase|) "Initial")))
+        (html-response
+         (render-page "Create Re-inspection Report"
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 "Create Re-inspection Report"))
+             (:section :class "card"
+               (:h2 "Original Report")
+               (:p "Report: " (:strong (cl-who:str (getf original :|report_number|))))
+               (:p "Building: " (:strong (cl-who:str (getf original :|building_number|))))
+               (:p "Site: " (:strong (cl-who:str (getf original :|site_name|))))
+               (:p "Deficiencies: " (:strong (cl-who:str 
+                                              (length (get-report-deficiencies original-id))))))
+             (:section :class "card"
+               (:h2 "Re-inspection Details")
+               (:form :method "post" 
+                      :action (format nil "/api/inspection-reports/~A/create-reinspection" original-id)
+                 (:div :class "form-row"
+                   (:div :class "form-group required"
+                     (:label "Re-inspection Date")
+                     (:input :type "date" :name "inspection_date" :required t :value today))
+                   (:div :class "form-group required"
+                     (:label "Team Number")
+                     (:input :type "text" :name "team_number" :required t
+                             :value (getf original :|team_number|)
+                             :placeholder "e.g., 104")))
+                 (:div :class "form-actions" :style "margin-top: 1.5rem; padding-top: 1rem;"
+                   (:button :type "submit" :class "btn btn-primary" :style "display: inline-block;" "Create Re-inspection Report")
+                   (:a :href (format nil "/inspection-reports/~A" original-id) 
+                       :class "btn" "Cancel")))))))
+        (redirect-to "/inspection-reports"))))
+
+
+(defun handle-deficiency-new (report-id-str)
+  "Add deficiency form."
+  (let* ((report-id (parse-int report-id-str))
+         (report (get-inspection-report report-id))
+         (voltage (getf report :|system_voltage|))
+         (code-source (get-code-source voltage))
+         (code-refs (if (string= code-source "NEC") *nec-code-references* *bs7671-code-references*)))
+    (html-response
+     (render-page "Add Deficiency"
+       (cl-who:with-html-output-to-string (s)
+         (:div :class "page-header"
+           (:h1 "Add Deficiency")
+           (:p "Report: " (:strong (cl-who:str (getf report :|report_number|)))))
+         (:form :method "post" :action (format nil "/api/inspection-reports/~A/deficiency" report-id)
+                :class "form-card" :enctype "multipart/form-data"
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "Location Description")
+               (:input :type "text" :name "location_description" :required t
+                       :placeholder "e.g., Rear wall, AC unit 1-9"))
+             (:div :class "form-group"
+               (:label "Number of Occurrences")
+               (:input :type "number" :name "num_occurrences" :value "1" :min "1")))
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "Deficiency Category")
+               (:select :name "deficiency_category" :required t
+                 (:option :value "" "-- Select --")
+                 (dolist (cat *deficiency-categories*)
+                   (cl-who:htm (:option :value cat (cl-who:str cat))))))
+             (:div :class "form-group"
+               (:label "Equipment Category")
+               (:select :name "equipment_category"
+                 (:option :value "" "-- Select --")
+                 (dolist (eq *equipment-categories*)
+                   (cl-who:htm (:option :value eq (cl-who:str eq)))))))
+           (:div :class "form-row"
+             (:div :class "form-group"
+               (:label "Imminent Danger?")
+               (:select :name "imminent_danger"
+                 (:option :value "No" "No")
+                 (:option :value "Yes" "Yes")))
+             (:div :class "form-group"
+               (:label "If Yes, Action Taken")
+               (:input :type "text" :name "action_taken" :placeholder "Describe action...")))
+           (:div :class "form-row"
+             (:div :class "form-group"
+               (:label "SOR Issued To")
+               (:select :name "sor_issued_to"
+                 (:option :value "" "-- Select --")
+                 (dolist (sor *sor-issued-to*)
+                   (cl-who:htm (:option :value sor (cl-who:str sor))))))
+             (:div :class "form-group"
+               (:label "Deficiency Status")
+               (:select :name "deficiency_status"
+                 (dolist (st *deficiency-statuses*)
+                   (cl-who:htm (:option :value st (cl-who:str st)))))))
+           (:div :class "form-group required"
+             (:label "Description of Deficiency")
+             (:textarea :name "description" :rows "3" :required t
+                        :placeholder "Describe the deficiency in detail..."))
+           (:div :class "form-row"
+             (:div :class "form-group"
+               (:label (cl-who:str (format nil "Code Source: ~A" code-source)))
+               (:input :type "hidden" :name "code_source" :value code-source))
+             (:div :class "form-group required"
+               (:label "Code Reference")
+               (:select :name "code_reference" :required t
+                 (:option :value "" "-- Select --")
+                 (dolist (ref code-refs)
+                   (cl-who:htm (:option :value ref (cl-who:str ref)))))))
+           (:div :class "form-group"
+             (:label "Deficiency Photo")
+             (:input :type "file" :name "deficiency_image" :accept "image/*")
+             (:p :class "help-text" "Upload a photo of the deficiency (optional)"))
+           (:div :class "form-actions"
+             (:button :type "submit" :class "btn btn-primary" "Add Deficiency")
+             (:a :href (format nil "/inspection-reports/~A" report-id) :class "btn" "Cancel"))))))))
+
+
+(defun handle-deficiency-edit (deficiency-id-str)
+  "Edit deficiency form."
+  (let* ((deficiency-id (parse-int deficiency-id-str))
+         (def (get-deficiency deficiency-id))
+         (report-id (getf def :|report_id|))
+         (report (get-inspection-report report-id))
+         (voltage (getf report :|system_voltage|))
+         (code-source (get-code-source voltage))
+         (code-refs (if (string= code-source "NEC") *nec-code-references* *bs7671-code-references*)))
+    (html-response
+     (render-page "Edit Deficiency"
+       (cl-who:with-html-output-to-string (s)
+         (:div :class "page-header"
+           (:h1 (cl-who:fmt "Edit Deficiency #~A" (getf def :|deficiency_number|)))
+           (:p "Report: " (:strong (cl-who:str (getf report :|report_number|)))))
+         (:form :method "post" :action (format nil "/api/deficiency/~A/update" deficiency-id)
+                :class "form-card" :enctype "multipart/form-data"
+           (:input :type "hidden" :name "report_id" :value (princ-to-string report-id))
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "Location Description")
+               (:input :type "text" :name "location_description" :required t
+                       :value (or (getf def :|location_description|) "")))
+             (:div :class "form-group"
+               (:label "Number of Occurrences")
+               (:input :type "number" :name "num_occurrences" :min "1"
+                       :value (or (getf def :|num_occurrences|) 1))))
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "Deficiency Category")
+               (:select :name "deficiency_category" :required t
+                 (:option :value "" "-- Select --")
+                 (dolist (cat *deficiency-categories*)
+                   (cl-who:htm 
+                    (:option :value cat 
+                             :selected (string= cat (getf def :|deficiency_category|))
+                             (cl-who:str cat))))))
+             (:div :class "form-group"
+               (:label "Equipment Category")
+               (:select :name "equipment_category"
+                 (:option :value "" "-- Select --")
+                 (dolist (eq *equipment-categories*)
+                   (cl-who:htm 
+                    (:option :value eq
+                             :selected (string= eq (getf def :|equipment_category|))
+                             (cl-who:str eq)))))))
+           (:div :class "form-row"
+             (:div :class "form-group"
+               (:label "Imminent Danger?")
+               (:select :name "imminent_danger"
+                 (:option :value "No" :selected (string= "No" (getf def :|imminent_danger|)) "No")
+                 (:option :value "Yes" :selected (string= "Yes" (getf def :|imminent_danger|)) "Yes")))
+             (:div :class "form-group"
+               (:label "If Yes, Action Taken")
+               (:input :type "text" :name "action_taken" 
+                       :value (or (getf def :|action_taken|) ""))))
+           (:div :class "form-row"
+             (:div :class "form-group"
+               (:label "SOR Issued To")
+               (:select :name "sor_issued_to"
+                 (:option :value "" "-- Select --")
+                 (dolist (sor *sor-issued-to*)
+                   (cl-who:htm 
+                    (:option :value sor
+                             :selected (string= sor (getf def :|sor_issued_to|))
+                             (cl-who:str sor))))))
+             (:div :class "form-group"
+               (:label "Deficiency Status")
+               (:select :name "deficiency_status"
+                 (dolist (st *deficiency-statuses*)
+                   (cl-who:htm 
+                    (:option :value st
+                             :selected (string= st (getf def :|deficiency_status|))
+                             (cl-who:str st)))))))
+           (:div :class "form-group required"
+             (:label "Description of Deficiency")
+             (:textarea :name "description" :rows "3" :required t
+                        (cl-who:str (or (getf def :|description|) ""))))
+           (:div :class "form-row"
+             (:div :class "form-group"
+               (:label (cl-who:str (format nil "Code Source: ~A" code-source)))
+               (:input :type "hidden" :name "code_source" :value code-source))
+             (:div :class "form-group required"
+               (:label "Code Reference")
+               (:select :name "code_reference" :required t
+                 (:option :value "" "-- Select --")
+                 (dolist (ref code-refs)
+                   (cl-who:htm 
+                    (:option :value ref
+                             :selected (string= ref (getf def :|code_reference|))
+                             (cl-who:str ref)))))))
+           (:div :class "form-group"
+             (:label "Deficiency Photo")
+             (when (getf def :|image_path|)
+               (cl-who:htm
+                (:div :style "margin-bottom: 0.5rem;"
+                  (:img :src (format nil "/uploads/~A" (getf def :|image_path|))
+                        :class "deficiency-thumbnail" :alt "Current photo")
+                  (:p :class "help-text" "Current photo (upload new to replace)"))))
+             (:input :type "file" :name "deficiency_image" :accept "image/*"))
+           (:div :class "form-actions"
+             (:button :type "submit" :class "btn btn-primary" "Save Changes")
+             (:a :href (format nil "/inspection-reports/~A" report-id) :class "btn" "Cancel"))))))))
+
+
+(defun handle-api-inspection-report-create ()
+  "Create a new inspection report."
+  (let ((wo-id (parse-int (get-param "wo_id")))
+        (site-id (parse-int (get-param "site_id")))
+        (building-number (get-param "building_number"))
+        (building-type (get-param "building_type"))
+        (system-voltage (get-param "system_voltage"))
+        (inspection-phase (get-param "inspection_phase"))
+        (team-number (get-param "team_number"))
+        (inspection-date (get-param "inspection_date"))
+        (location-description (get-param "location_description")))
+    (let ((report-id (create-inspection-report 
+                      wo-id site-id building-number building-type system-voltage
+                      inspection-phase team-number inspection-date
+                      :location-description location-description)))
+      (redirect-to (format nil "/inspection-reports/~A" report-id)))))
+
+
+(defun handle-api-inspection-report-update (id)
+  "Update an inspection report."
+  (let ((report-id (parse-int id))
+        (inspection-date (get-param "inspection_date"))
+        (team-number (get-param "team_number"))
+        (building-type (get-param "building_type"))
+        (building-number (get-param "building_number"))
+        (location-description (get-param "location_description"))
+        (overall-rating (get-param "overall_rating"))
+        (mrf-needed (get-param "mrf_needed"))
+        (summary-of-findings (get-param "summary_of_findings")))
+    (update-inspection-report report-id
+                              :inspection-date inspection-date
+                              :team-number team-number
+                              :building-type building-type
+                              :building-number building-number
+                              :location-description location-description
+                              :overall-rating overall-rating
+                              :mrf-needed mrf-needed
+                              :summary-of-findings summary-of-findings)
+    ;; Auto-generate MRF if MRF Required = Yes and no MRF exists yet
+    (when (and mrf-needed (string= mrf-needed "Yes"))
+      (let ((existing-mrf (get-mrf-by-report report-id)))
+        (unless existing-mrf
+          (create-mrf-from-inspection report-id))))
+    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+
+
+(defun handle-api-inspection-report-building-image (id)
+  "Upload building image for a report."
+  (let* ((report-id (parse-int id))
+         (image-post-param (hunchentoot:post-parameter "building_image"))
+         (image-path (when image-post-param
+                       (save-uploaded-file image-post-param "buildings" 
+                                           (format nil "bldg-~A" report-id)))))
+    (when image-path
+      (execute-sql "UPDATE inspection_reports SET building_image_path = ? WHERE id = ?"
+                   image-path report-id))
+    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+
+
+(defun handle-api-inspection-report-submit (id)
+  "Submit report and linked MRF for QC review."
+  (let* ((report-id (parse-int id))
+         (user (get-current-user))
+         (user-id (getf user :|id|))
+         (inspector1-name (get-param "inspector1_name"))
+         (inspector2-name (get-param "inspector2_name"))
+         (report (get-inspection-report report-id))
+         (linked-mrf (get-mrf-by-report report-id)))
+    (submit-report-for-qc report-id inspector1-name inspector2-name)
+    ;; Also submit linked MRF
+    (when linked-mrf
+      (update-mrf-status (getf linked-mrf :|id|) "Submitted"))
+    ;; Record who submitted the report for notifications
+    (execute-sql "UPDATE inspection_reports SET submitted_by_user_id = ? WHERE id = ?" user-id report-id)
+    ;; Notify QC team
+    (notify-qc-team report-id (getf report :|report_number|) inspector1-name)
+    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+
+
+(defun handle-api-inspection-report-qc-approve (id)
+  "QC approve a report and its linked MRF."
+  (let* ((report-id (parse-int id))
+         (report (get-inspection-report report-id))
+         (qc-name (get-param "qc_name"))
+         (qc-comments (or (get-param "qc_comments") ""))
+         (submitted-by (getf report :|submitted_by_user_id|))
+         (linked-mrf (get-mrf-by-report report-id)))
+    (qc-approve-report report-id qc-name qc-comments)
+    (finalize-report report-id)
+    ;; Also approve linked MRF (this will deduct inventory)
+    (when linked-mrf
+      (update-mrf-status (getf linked-mrf :|id|) "Approved" :approved-by qc-name))
+    ;; Notify submitting inspector
+    (when submitted-by
+      (execute-sql 
+       "INSERT INTO notifications (user_id, title, message, link) VALUES (?, ?, ?, ?)"
+       submitted-by
+       "Report Approved - Signature Required"
+       (format nil "Report ~A has been approved by QC.~A Please sign and finalize." 
+               (getf report :|report_number|)
+               (if linked-mrf " MRF also approved." ""))
+       (format nil "/inspection-reports/~A" report-id)))
+    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+
+
+(defun handle-api-create-reinspection (original-id-str)
+  "Create a re-inspection report from a completed initial inspection."
+  (let* ((original-id (parse-int original-id-str))
+         (team-number (get-param "team_number"))
+         (inspection-date (get-param "inspection_date"))
+         (new-report-id (create-reinspection-report original-id 
+                                                     :team-number team-number
+                                                     :inspection-date inspection-date)))
+    (redirect-to (format nil "/inspection-reports/~A" new-report-id))))
+
+
+(defun handle-api-inspection-report-qc-reject (id)
+  "QC reject a report and reset its linked MRF to Draft."
+  (let* ((report-id (parse-int id))
+         (report (get-inspection-report report-id))
+         (qc-name (get-param "qc_name"))
+         (qc-comments (or (get-param "qc_comments") ""))
+         (submitted-by (getf report :|submitted_by_user_id|))
+         (current-rejection-count (or (getf report :|rejection_count|) 0))
+         (new-rejection-number (1+ current-rejection-count))
+         (linked-mrf (get-mrf-by-report report-id)))
+    (qc-reject-report report-id qc-name qc-comments)
+    ;; Increment rejection counter
+    (execute-sql "UPDATE inspection_reports SET rejection_count = ? WHERE id = ?" 
+                 new-rejection-number report-id)
+    ;; Reset linked MRF to Draft so inspector can modify it
+    (when linked-mrf
+      (update-mrf-status (getf linked-mrf :|id|) "Draft"))
+    ;; Record rejection history
+    (execute-sql 
+     "INSERT INTO rejection_history (report_id, rejection_number, team_number, qc_name, qc_comments, submitted_at)
+      VALUES (?, ?, ?, ?, ?, ?)"
+     report-id new-rejection-number 
+     (getf report :|team_number|) qc-name qc-comments
+     (getf report :|inspector1_signed_at|))
+    ;; Notify submitting inspector
+    (when submitted-by
+      (execute-sql 
+       "INSERT INTO notifications (user_id, title, message, link) VALUES (?, ?, ?, ?)"
+       submitted-by
+       "Report Rejected - Corrections Needed"
+       (format nil "Report ~A was rejected by ~A.~A Comments: ~A" 
+               (getf report :|report_number|) qc-name 
+               (if linked-mrf " MRF returned to Draft." "")
+               qc-comments)
+       (format nil "/inspection-reports/~A" report-id)))
+    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+
+
+(defun handle-api-inspection-report-assign (id)
+  "Assign a report to a QC reviewer. QC Manager only."
+  (let* ((user (get-current-user))
+         (report-id (parse-int id))
+         (assigned-qc-id-str (get-param "assigned_qc_id"))
+         (assigned-qc-id (if (and assigned-qc-id-str (> (length assigned-qc-id-str) 0))
+                             (parse-int assigned-qc-id-str)
+                             nil)))
+    (if (and user (user-is-qc-manager-p user))
+        (progn
+          (execute-sql "UPDATE inspection_reports SET assigned_qc_id = ? WHERE id = ?" 
+                       assigned-qc-id report-id)
+          (redirect-to "/"))
+        (redirect-to "/unauthorized"))))
+
+
+(defun handle-api-deficiency-create (report-id-str)
+  "Add a deficiency to a report."
+  (let* ((report-id (parse-int report-id-str))
+         (location-description (get-param "location_description"))
+         (num-occurrences (parse-int (get-param "num_occurrences")))
+         (deficiency-category (get-param "deficiency_category"))
+         (equipment-category (get-param "equipment_category"))
+         (imminent-danger (get-param "imminent_danger"))
+         (action-taken (get-param "action_taken"))
+         (sor-issued-to (get-param "sor_issued_to"))
+         (description (get-param "description"))
+         (code-source (get-param "code_source"))
+         (code-reference (get-param "code_reference"))
+         (deficiency-status (get-param "deficiency_status"))
+         ;; Handle image upload
+         (image-post-param (hunchentoot:post-parameter "deficiency_image"))
+         (image-path (when image-post-param
+                       (save-uploaded-file image-post-param "deficiencies" 
+                                           (format nil "def-~A" report-id)))))
+    (add-deficiency report-id
+                    :location-description location-description
+                    :num-occurrences num-occurrences
+                    :deficiency-category deficiency-category
+                    :equipment-category equipment-category
+                    :imminent-danger imminent-danger
+                    :action-taken action-taken
+                    :sor-issued-to sor-issued-to
+                    :description description
+                    :code-source code-source
+                    :code-reference code-reference
+                    :deficiency-status deficiency-status
+                    :image-path image-path)
+    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+
+
+(defun handle-api-deficiency-delete (deficiency-id-str)
+  "Delete a deficiency."
+  (let ((deficiency-id (parse-int deficiency-id-str))
+        (report-id (get-param "report_id")))
+    (delete-deficiency deficiency-id)
+    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+
+
+(defun handle-api-deficiency-update (deficiency-id-str)
+  "Update a deficiency."
+  (let* ((deficiency-id (parse-int deficiency-id-str))
+         (report-id (get-param "report_id"))
+         (location-description (get-param "location_description"))
+         (num-occurrences (parse-int (get-param "num_occurrences")))
+         (deficiency-category (get-param "deficiency_category"))
+         (equipment-category (get-param "equipment_category"))
+         (imminent-danger (get-param "imminent_danger"))
+         (action-taken (get-param "action_taken"))
+         (sor-issued-to (get-param "sor_issued_to"))
+         (description (get-param "description"))
+         (code-source (get-param "code_source"))
+         (code-reference (get-param "code_reference"))
+         (deficiency-status (get-param "deficiency_status"))
+         ;; Handle image upload (only if new file provided)
+         (image-post-param (hunchentoot:post-parameter "deficiency_image"))
+         (new-image-path (when (and image-post-param (listp image-post-param) (first image-post-param))
+                           (save-uploaded-file image-post-param "deficiencies" 
+                                               (format nil "def-~A" deficiency-id)))))
+    (update-deficiency deficiency-id
+                       :location-description location-description
+                       :num-occurrences num-occurrences
+                       :deficiency-category deficiency-category
+                       :equipment-category equipment-category
+                       :imminent-danger imminent-danger
+                       :action-taken action-taken
+                       :sor-issued-to sor-issued-to
+                       :description description
+                       :code-source code-source
+                       :code-reference code-reference
+                       :deficiency-status deficiency-status
+                       :image-path new-image-path)
+    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+
