@@ -675,7 +675,6 @@
          (blood-type (get-param "blood_type"))
          (body-weight (parse-int (get-param "body_weight_lbs")))
          (camp-id (parse-int (get-param "current_camp_id")))
-         (location (get-param "current_location"))
          (notes (get-param "notes")))
     (when id
       (update-personnel id
@@ -686,8 +685,12 @@
                         :blood-type blood-type
                         :body-weight-lbs body-weight
                         :current-camp-id camp-id
-                        :current-location location
-                        :notes notes))
+                        :notes notes)
+      ;; Sync location to linked user account
+      (let ((person (get-personnel id)))
+        (when (and person (getf person :|user_id|))
+          (execute-sql "UPDATE users SET current_camp_id = ? WHERE id = ?"
+                       camp-id (getf person :|user_id|)))))
     (redirect-to "/perstat/personnel")))
 
 (defun handle-api-perstat-personnel-create ()

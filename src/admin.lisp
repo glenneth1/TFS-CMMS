@@ -311,6 +311,9 @@
                        (or is-admin 0) 
                        current-camp-id
                        user-id)
+          ;; Sync location to linked personnel record
+          (execute-sql "UPDATE personnel SET current_camp_id = ? WHERE user_id = ?"
+                       current-camp-id user-id)
           (redirect-to "/admin/users"))
         (redirect-to "/unauthorized"))))
 
