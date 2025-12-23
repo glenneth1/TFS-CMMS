@@ -28,4 +28,5 @@
                              (:file "reports")
                              (:file "admin")
                              (:file "master-tracker")
+                             (:file "perstat")
                              (:file "routes")))))

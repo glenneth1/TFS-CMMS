@@ -715,6 +715,9 @@
   (execute-sql "INSERT OR IGNORE INTO system_settings (setting_key, setting_value, description) 
                 VALUES ('contract_current_period', 'BY', 'Current contract period: BY (Base Year), OY (Option Year), EX (Extension)')")
   
+  ;; Initialize PERSTAT tables
+  (ensure-perstat-tables)
+  
   (format t "~&Database initialized at ~A~%" *database-path*)
   t)
 

@@ -90,6 +90,7 @@
           (when (and user (user-can-access-master-tracker-p user))
             (cl-who:htm
              (:li (:a :href "/master-tracker" "Master Tracker"))))
+          (:li (:a :href "/perstat" "PERSTAT"))
           (:li (:a :href "/reports" "Reports"))
           (when (and user (user-is-admin-p user))
             (cl-who:htm
@@ -1515,6 +1516,16 @@ function updateDatesFromWeek() {
        (handle-weekly-report))
       ((string= uri "/api/master-tracker/camps")
        (handle-api-camps-by-country))
+      
+      ;; PERSTAT (Personnel Status) routes
+      ((string= uri "/perstat")
+       (handle-perstat-dashboard))
+      ((string= uri "/perstat/personnel")
+       (handle-perstat-personnel-list))
+      ((string= uri "/perstat/personnel/new")
+       (handle-perstat-personnel-new))
+      ((and (eq method :post) (string= uri "/api/perstat/personnel/create"))
+       (handle-api-perstat-personnel-create))
       
       ;; DAR (Daily Activity Report) routes
       ((string= uri "/dar")
