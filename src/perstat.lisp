@@ -541,7 +541,167 @@
              (:button :type "submit" :class "btn btn-primary" "Add Personnel")
              (:a :href "/perstat/personnel" :class "btn" "Cancel"))))))))
 
+(defun handle-perstat-personnel-detail (id-str)
+  "View personnel detail page."
+  (let* ((id (parse-int id-str))
+         (person (when id (get-personnel id))))
+    (if person
+        (html-response
+         (render-page (format nil "Personnel - ~A" (getf person :|full_name|))
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 (cl-who:str (getf person :|full_name|)))
+               (:div :class "header-actions"
+                 (:a :href (format nil "/perstat/personnel/~A/edit" id) :class "btn btn-primary" "Edit")
+                 (:a :href "/perstat/personnel" :class "btn" "Back to Roster")))
+             (:section :class "card"
+               (:h2 "Personnel Information")
+               (:div :class "detail-grid"
+                 (:div :class "detail-item"
+                   (:label "Role Category")
+                   (:span (cl-who:str (or (getf person :|role_category|) "-"))))
+                 (:div :class "detail-item"
+                   (:label "Status")
+                   (:span (cl-who:str (or (getf person :|status|) "Active"))))
+                 (:div :class "detail-item"
+                   (:label "Nationality")
+                   (:span (cl-who:str (or (getf person :|nationality|) "-"))))
+                 (:div :class "detail-item"
+                   (:label "Blood Type")
+                   (:span (cl-who:str (or (getf person :|blood_type|) "-"))))))
+             (:section :class "card"
+               (:h2 "Current Location")
+               (:div :class "detail-grid"
+                 (:div :class "detail-item"
+                   (:label "Country")
+                   (:span (cl-who:str (or (getf person :|country_name|) "-"))))
+                 (:div :class "detail-item"
+                   (:label "Camp/Base")
+                   (:span (cl-who:str (or (getf person :|camp_name|) "-"))))
+                 (:div :class "detail-item"
+                   (:label "Location (Text)")
+                   (:span (cl-who:str (or (getf person :|current_location|) "-")))))))))
+        (progn
+          (setf (hunchentoot:return-code*) 404)
+          (html-response
+           (render-page "Not Found"
+             "<div class='empty-state'><h1>Personnel Not Found</h1><a href='/perstat/personnel' class='btn'>Back to Roster</a></div>"))))))
+
+(defun handle-perstat-personnel-edit (id-str)
+  "Edit personnel form."
+  (let* ((id (parse-int id-str))
+         (person (when id (get-personnel id)))
+         (camps (fetch-all "SELECT c.id, c.name, co.name as country_name 
+                           FROM camps c 
+                           JOIN countries co ON c.country_id = co.id 
+                           ORDER BY co.name, c.name")))
+    (if person
+        (html-response
+         (render-page (format nil "Edit - ~A" (getf person :|full_name|))
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "page-header"
+               (:h1 "Edit Personnel"))
+             (:form :method "post" :action (format nil "/api/perstat/personnel/~A/update" id) :class "form-card"
+               (:div :class "form-row"
+                 (:div :class "form-group required"
+                   (:label "Full Name")
+                   (:input :type "text" :name "full_name" :required t
+                           :value (or (getf person :|full_name|) "")))
+                 (:div :class "form-group required"
+                   (:label "Role Category")
+                   (:select :name "role_category" :required t
+                     (:option :value "" "-- Select --")
+                     (dolist (cat *personnel-categories*)
+                       (let ((selected (string= cat (getf person :|role_category|))))
+                         (cl-who:htm 
+                          (:option :value cat :selected selected (cl-who:str cat))))))))
+               (:div :class "form-row"
+                 (:div :class "form-group"
+                   (:label "Status")
+                   (:select :name "status"
+                     (:option :value "Active" :selected (string= "Active" (getf person :|status|)) "Active / Present")
+                     (:option :value "R/R" :selected (string= "R/R" (getf person :|status|)) "R/R (Rest & Recuperation)")
+                     (:option :value "Remote" :selected (string= "Remote" (getf person :|status|)) "Remote (Working from HOR)")
+                     (:option :value "Leave" :selected (string= "Leave" (getf person :|status|)) "Leave")
+                     (:option :value "LWOP" :selected (string= "LWOP" (getf person :|status|)) "LWOP (Leave Without Pay)")
+                     (:option :value "Medical" :selected (string= "Medical" (getf person :|status|)) "Medical Leave")
+                     (:option :value "Departed" :selected (string= "Departed" (getf person :|status|)) "Departed")))
+                 (:div :class "form-group"
+                   (:label "Blood Type")
+                   (:select :name "blood_type"
+                     (:option :value "" "-- Select --")
+                     (dolist (bt *blood-types*)
+                       (let ((selected (string= bt (getf person :|blood_type|))))
+                         (cl-who:htm 
+                          (:option :value bt :selected selected (cl-who:str bt))))))))
+               (:div :class "form-row"
+                 (:div :class "form-group"
+                   (:label "Nationality")
+                   (:input :type "text" :name "nationality" 
+                           :value (or (getf person :|nationality|) "")
+                           :placeholder "e.g., UK, US, OCN"))
+                 (:div :class "form-group"
+                   (:label "Body Weight (lbs)")
+                   (:input :type "number" :name "body_weight_lbs"
+                           :value (or (getf person :|body_weight_lbs|) ""))))
+               (:hr)
+               (:h3 "Current Location")
+               (:div :class "form-row"
+                 (:div :class "form-group"
+                   (:label "Camp/Base")
+                   (:select :name "current_camp_id"
+                     (:option :value "" "-- Select or enter free text below --")
+                     (dolist (c camps)
+                       (let ((selected (and (getf person :|current_camp_id|)
+                                           (= (getf c :|id|) (getf person :|current_camp_id|)))))
+                         (cl-who:htm 
+                          (:option :value (getf c :|id|) :selected selected
+                                   (cl-who:str (format nil "~A - ~A" 
+                                                       (getf c :|country_name|)
+                                                       (getf c :|name|)))))))))
+                 (:div :class "form-group"
+                   (:label "Location (free text)")
+                   (:input :type "text" :name "current_location" 
+                           :value (or (getf person :|current_location|) "")
+                           :placeholder "e.g., Erbil - Camp Strike, or UK - HOR")))
+               (:div :class "form-group"
+                 (:label "Notes")
+                 (:textarea :name "notes" :rows "3" (cl-who:str (or (getf person :|notes|) ""))))
+               (:div :class "form-actions"
+                 (:button :type "submit" :class "btn btn-primary" "Save Changes")
+                 (:a :href "/perstat/personnel" :class "btn" "Cancel"))))))
+        (progn
+          (setf (hunchentoot:return-code*) 404)
+          (html-response
+           (render-page "Not Found"
+             "<div class='empty-state'><h1>Personnel Not Found</h1><a href='/perstat/personnel' class='btn'>Back to Roster</a></div>"))))))
+
 ;;; API Handlers
+
+(defun handle-api-perstat-personnel-update (id-str)
+  "Update a personnel record."
+  (let* ((id (parse-int id-str))
+         (full-name (get-param "full_name"))
+         (role-category (get-param "role_category"))
+         (status (get-param "status"))
+         (nationality (get-param "nationality"))
+         (blood-type (get-param "blood_type"))
+         (body-weight (parse-int (get-param "body_weight_lbs")))
+         (camp-id (parse-int (get-param "current_camp_id")))
+         (location (get-param "current_location"))
+         (notes (get-param "notes")))
+    (when id
+      (update-personnel id
+                        :full-name full-name
+                        :role-category role-category
+                        :status status
+                        :nationality nationality
+                        :blood-type blood-type
+                        :body-weight-lbs body-weight
+                        :current-camp-id camp-id
+                        :current-location location
+                        :notes notes))
+    (redirect-to "/perstat/personnel")))
 
 (defun handle-api-perstat-personnel-create ()
   "Create a new personnel record."
