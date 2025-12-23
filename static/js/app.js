@@ -40,12 +40,24 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   // Form submission handling for API calls
+  // Skip forms that should use normal submission (inspection reports, etc.)
   document.querySelectorAll('form[action^="/api/"]').forEach(function(form) {
+    const action = form.getAttribute('action');
+    
+    // Let these forms submit normally (server handles redirect)
+    if (action.includes('/inspection-reports/create') ||
+        action.includes('/create-reinspection') ||
+        action.includes('/mrf/') ||
+        action.includes('/dar/') ||
+        action.includes('/irp/') ||
+        action.includes('/rr/')) {
+      return; // Don't intercept, let browser handle normally
+    }
+    
     form.addEventListener('submit', function(e) {
       e.preventDefault();
       
       const formData = new FormData(form);
-      const action = form.getAttribute('action');
       
       fetch(action, {
         method: 'POST',
