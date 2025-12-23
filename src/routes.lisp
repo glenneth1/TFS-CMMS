@@ -127,6 +127,92 @@
         (:p "Task Force SAFE - Computerized Maintenance Management System"))
       (:script :src "/static/js/app.js")))))
 
+;;; Public Landing Page
+
+(defun handle-landing-page ()
+  "Public landing page for non-logged-in users."
+  (html-response
+   (cl-who:with-html-output-to-string (s nil :prologue t)
+     (:html
+      (:head
+       (:meta :charset "UTF-8")
+       (:meta :name "viewport" :content "width=device-width, initial-scale=1.0")
+       (:title "Task Force SAFE - Electrical Safety Inspections")
+       (:link :rel "stylesheet" :href "/static/css/style.css"))
+      (:body :class "landing-page"
+       ;; Header with login button
+       (:header :class "landing-header"
+         (:div :class "landing-header-logos"
+           (:img :src "/static/img/company_logo.png" :alt "Versar" :class "logo-company")
+           (:img :src "/static/img/TFS_Logo.png" :alt "Task Force SAFE" :class "logo-tfs"))
+         (:a :href "/login" :class "btn btn-primary" "Staff Login"))
+       
+       ;; Hero section
+       (:section :class "landing-hero"
+         (:div :class "landing-hero-content"
+           (:h1 "Task Force SAFE")
+           (:p :class "landing-subtitle" "Electrical Safety Inspection Program")
+           (:p :class "landing-tagline" "Safeguarding Personnel and Facilities Across CENTCOM")))
+       
+       ;; Mission section
+       (:section :class "landing-section"
+         (:div :class "landing-container"
+           (:h2 "Our Mission")
+           (:p "Task Force SAFE (TF SAFE) plays a vital role in safeguarding personnel and facilities, 
+                reducing risks, and ensuring operational readiness in challenging environments across 
+                the CENTCOM Area of Responsibility.")
+           (:p "Our teams provide subject matter expertise delivering safe operating conditions 
+                throughout military installations in Syria, Iraq, Jordan, Kuwait, and surrounding regions.")))
+       
+       ;; Impact section
+       (:section :class "landing-section landing-section-alt"
+         (:div :class "landing-container"
+           (:h2 "Program Impact")
+           (:p :class "landing-stats-intro" "Since July 2020, Task Force SAFE has:")
+           (:div :class "landing-stats"
+             (:div :class "landing-stat"
+               (:span :class "landing-stat-number" "15,855")
+               (:span :class "landing-stat-label" "Facilities Inspected"))
+             (:div :class "landing-stat"
+               (:span :class "landing-stat-number" "336,365")
+               (:span :class "landing-stat-label" "Deficiencies Identified"))
+             (:div :class "landing-stat"
+               (:span :class "landing-stat-number" "123,435")
+               (:span :class "landing-stat-label" "Deficiencies Repaired"))
+             (:div :class "landing-stat"
+               (:span :class "landing-stat-number" "12")
+               (:span :class "landing-stat-label" "Active Teams")))
+           (:p :class "landing-impact" "Through identification and repair of electrical deficiencies, 
+                our field teams have prevented an immeasurable number of electrocutions, shocks, 
+                and fires for facility occupants throughout the AOR.")))
+       
+       ;; Services section
+       (:section :class "landing-section"
+         (:div :class "landing-container"
+           (:h2 "What We Do")
+           (:div :class "landing-services"
+             (:div :class "landing-service"
+               (:h3 "Electrical Inspections")
+               (:p "Comprehensive inspections from source to end users, identifying Life, Health, 
+                    and Safety (LHS) electrical deficiencies."))
+             (:div :class "landing-service"
+               (:h3 "Deficiency Repair")
+               (:p "Immediate mitigation and repair of unsafe conditions. No deficiency is ever 
+                    left in an unsafe state."))
+             (:div :class "landing-service"
+               (:h3 "Quality Assurance")
+               (:p "Rigorous QA/QC processes ensure accurate reporting and continuous improvement 
+                    across all inspection activities."))
+             (:div :class "landing-service"
+               (:h3 "UFC Inspections")
+               (:p "Multi-discipline facility assessments including structural, mechanical, 
+                    fire protection, and environmental evaluations.")))))
+       
+       ;; Footer
+       (:footer :class "landing-footer"
+         (:p "Task Force SAFE / UFC - CENTCOM Area of Responsibility")
+         (:p :class "landing-footer-sub" "Versar Global Solutions")))))))
+
 ;;; Authentication Handlers
 
 (defun handle-login ()
@@ -143,6 +229,7 @@
              (:title "Login - TF SAFE CMMS")
              (:link :rel "stylesheet" :href "/static/css/style.css"))
             (:body :class "login-page"
+             (:a :href "/" :class "login-back-link" "← Back to Home")
              (:div :class "login-container"
                (:div :class "login-header"
                  (:img :src "/static/img/TFS_Logo.png" :alt "Task Force SAFE" :class "login-logo")
@@ -680,9 +767,10 @@
 ;;; Route handlers
 
 (defun handle-index ()
-  "Dashboard showing pending items based on user role."
+  "Dashboard showing pending items based on user role, or landing page for visitors."
   (let ((user (get-current-user)))
     (if user
+        ;; Logged in - show dashboard
         (html-response
          (render-page "Dashboard"
            (cl-who:with-html-output-to-string (s)
@@ -916,14 +1004,15 @@
                                (:button :type "submit" :class "btn btn-sm" "Dismiss")))))))))))
              
              ;; Quick links for all users
-             (:section :class "card"
-               (:h2 "Quick Links")
-               (:div :class "quick-actions"
-                 (:a :href "/work-orders" :class "btn" "Work Orders")
-                 (:a :href "/inspection-reports" :class "btn" "Inspection Reports")
-                 (:a :href "/master-tracker" :class "btn btn-primary" "Master Tracker")
-                 (:a :href "/sites" :class "btn" "Sites"))))))
-        (redirect-to "/login"))))
+            (:section :class "card"
+              (:h2 "Quick Links")
+              (:div :class "quick-actions"
+                (:a :href "/work-orders" :class "btn" "Work Orders")
+                (:a :href "/inspection-reports" :class "btn" "Inspection Reports")
+                (:a :href "/master-tracker" :class "btn btn-primary" "Master Tracker")
+                (:a :href "/sites" :class "btn" "Sites"))))))
+        ;; Not logged in - show public landing page
+        (handle-landing-page))))
 
 (defun handle-work-orders ()
   "Work orders list page."
