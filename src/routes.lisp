@@ -1706,6 +1706,8 @@ function updateDatesFromWeek() {
          (handle-api-rr-update (aref groups 0))))
       ((and (eq method :get) (string= uri "/api/rr/check-dates"))
        (handle-api-rr-check-dates))
+      ((and (eq method :get) (string= uri "/api/rr/month-leave"))
+       (handle-api-rr-month-leave))
       
       ;; 404
       (t

@@ -302,10 +302,12 @@
                   (:div :class "form-group"
                     (:label "Start Date (including travel) *")
                     (:input :type "date" :name "start_date" :required t
+                            :id "rr-start-date"
                             :min (format-date-for-db (get-universal-time))))
                   (:div :class "form-group"
                     (:label "End Date (including travel) *")
-                    (:input :type "date" :name "end_date" :required t)))
+                    (:input :type "date" :name "end_date" :required t
+                            :id "rr-end-date")))
                 (:div :class "form-row"
                   (:div :class "form-group"
                     (:label "Traveling To (Destination) *")
@@ -317,6 +319,53 @@
                             :placeholder "e.g., London, UK")))
                 (:div :id "date-validation-message" :style "margin-bottom: 1rem;")
                 (:button :type "submit" :class "btn btn-primary" "Submit R&R Request")))))
+         
+         ;; Who's On Leave Calendar Preview (visible to all users including those in probation)
+         (:section :class "card"
+           (:h2 "Who's On Leave")
+           (:p :class "text-muted" "Select a month to see who is already scheduled for R&R.")
+           (:div :class "form-row" :style "margin-bottom: 1rem;"
+             (:select :id "leave-month-select" :class "form-control" :style "max-width: 200px;"
+               :onchange "loadLeaveCalendar(this.value)"
+               (:option :value "" "-- Select Month --")
+               (let ((now (get-decoded-time)))
+                 (declare (ignore now))
+                 (multiple-value-bind (sec min hour day month year) (get-decoded-time)
+                   (declare (ignore sec min hour day))
+                   (loop for i from 0 to 11
+                         for m = (1+ (mod (+ month i -1) 12))
+                         for y = (if (> (+ month i -1) 12) (1+ year) year)
+                         do (cl-who:htm
+                             (:option :value (format nil "~4,'0D-~2,'0D" y m)
+                                      (cl-who:str (format nil "~A ~D" (month-name m) y)))))))))
+           (:div :id "leave-calendar-preview" :style "min-height: 100px;")
+           (:script "
+function loadLeaveCalendar(monthStr) {
+  if (!monthStr) {
+    document.getElementById('leave-calendar-preview').innerHTML = '';
+    return;
+  }
+  fetch('/api/rr/month-leave?month=' + monthStr)
+    .then(r => r.json())
+    .then(data => {
+      let html = '';
+      if (data.length === 0) {
+        html = '<p style=\"color: green;\">✓ No one scheduled for R&R this month</p>';
+      } else {
+        html = '<table class=\"data-table\"><thead><tr><th>Name</th><th>Dates</th><th>Days</th></tr></thead><tbody>';
+        data.forEach(r => {
+          html += '<tr><td>' + r.name + '</td><td>' + r.start_date + ' to ' + r.end_date + '</td><td>' + r.days + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        html += '<p style=\"margin-top: 0.5rem; color: #666;\">Total: ' + data.length + ' person(s) on leave</p>';
+      }
+      document.getElementById('leave-calendar-preview').innerHTML = html;
+    })
+    .catch(e => {
+      document.getElementById('leave-calendar-preview').innerHTML = '<p style=\"color: red;\">Error loading calendar</p>';
+    });
+}
+"))
          
          ;; Pending Requests
          (when pending-requests
@@ -935,6 +984,32 @@ th { background: #f0f0f0; font-weight: bold; }
      (list :available (< (or conflicts 0) max-concurrent)
            :conflicts conflicts
            :max_allowed max-concurrent))))
+
+(defun handle-api-rr-month-leave ()
+  "API to get all approved R&R for a given month (for calendar preview)."
+  (let* ((month-str (hunchentoot:parameter "month"))  ; Format: YYYY-MM
+         (year-month (when month-str (format nil "~A-%" month-str)))
+         (results (when month-str
+                    (fetch-all 
+                     "SELECT u.full_name, r.start_date, r.end_date, r.total_days
+                      FROM rr_requests r
+                      JOIN users u ON r.user_id = u.id
+                      WHERE r.status = 'Approved'
+                        AND ((r.start_date LIKE ? OR r.end_date LIKE ?)
+                             OR (r.start_date < ? AND r.end_date > ?))
+                      ORDER BY r.start_date"
+                     year-month year-month
+                     (format nil "~A-01" month-str)
+                     (format nil "~A-31" month-str)))))
+    (setf (hunchentoot:content-type*) "application/json")
+    (format nil "[~{~A~^,~}]"
+            (mapcar (lambda (r)
+                      (format nil "{\"name\":\"~A\",\"start_date\":\"~A\",\"end_date\":\"~A\",\"days\":~A}"
+                              (getf r :|full_name|)
+                              (format-date-display (getf r :|start_date|))
+                              (format-date-display (getf r :|end_date|))
+                              (or (getf r :|total_days|) 0)))
+                    (or results '())))))
 
 (defun handle-rr-edit (id-str)
   "Edit R&R request page - Admin/AO Lead/Program Manager only."
