@@ -131,57 +131,66 @@
 
 (defun handle-landing-page ()
   "Public landing page for non-logged-in users."
-  (html-response
-   (cl-who:with-html-output-to-string (s nil :prologue t)
-     (:html
-      (:head
-       (:meta :charset "UTF-8")
-       (:meta :name "viewport" :content "width=device-width, initial-scale=1.0")
-       (:title "Task Force SAFE - Electrical Safety Inspections")
-       (:link :rel "stylesheet" :href "/static/css/style.css"))
-      (:body :class "landing-page"
-       ;; Header with login button
-       (:header :class "landing-header"
-         (:div :class "landing-header-logos"
-           (:img :src "/static/img/company_logo.png" :alt "Versar" :class "logo-company")
-           (:img :src "/static/img/TFS_Logo.png" :alt "Task Force SAFE" :class "logo-tfs"))
-         (:a :href "/login" :class "btn btn-primary" "Staff Login"))
-       
-       ;; Hero section
-       (:section :class "landing-hero"
-         (:div :class "landing-hero-content"
-           (:h1 "Task Force SAFE")
-           (:p :class "landing-subtitle" "Electrical Safety Inspection Program")
-           (:p :class "landing-tagline" "Safeguarding Personnel and Facilities Across CENTCOM")))
-       
-       ;; Mission section
-       (:section :class "landing-section"
-         (:div :class "landing-container"
-           (:h2 "Our Mission")
-           (:p "Task Force SAFE (TF SAFE) plays a vital role in safeguarding personnel and facilities, 
-                reducing risks, and ensuring operational readiness in challenging environments across 
-                the CENTCOM Area of Responsibility.")
-           (:p "Our teams provide subject matter expertise delivering safe operating conditions 
-                throughout military installations in Syria, Iraq, Jordan, Kuwait, and surrounding regions.")))
-       
-       ;; Impact section
-       (:section :class "landing-section landing-section-alt"
-         (:div :class "landing-container"
-           (:h2 "Program Impact")
-           (:p :class "landing-stats-intro" "Since July 2020, Task Force SAFE has:")
-           (:div :class "landing-stats"
-             (:div :class "landing-stat"
-               (:span :class "landing-stat-number" "15,855")
-               (:span :class "landing-stat-label" "Facilities Inspected"))
-             (:div :class "landing-stat"
-               (:span :class "landing-stat-number" "336,365")
-               (:span :class "landing-stat-label" "Deficiencies Identified"))
-             (:div :class "landing-stat"
-               (:span :class "landing-stat-number" "123,435")
-               (:span :class "landing-stat-label" "Deficiencies Repaired"))
-             (:div :class "landing-stat"
-               (:span :class "landing-stat-number" "12")
-               (:span :class "landing-stat-label" "Active Teams")))
+  (let* ((stats (fetch-one "SELECT 
+                             COUNT(DISTINCT building_number) as facilities_inspected,
+                             COUNT(*) as deficiencies_identified,
+                             COUNT(CASE WHEN deficiency_status IN ('Closed / Repaired', 'Closed/Repaired') THEN 1 END) as deficiencies_repaired
+                           FROM master_deficiencies"))
+         (facilities-count (or (getf stats :|facilities_inspected|) 0))
+         (identified-count (or (getf stats :|deficiencies_identified|) 0))
+         (repaired-count (or (getf stats :|deficiencies_repaired|) 0))
+         (active-teams (or (getf (fetch-one "SELECT COUNT(DISTINCT name) as c FROM camps WHERE id IN (SELECT DISTINCT camp_id FROM master_deficiencies WHERE inspection_date >= date('now', '-90 days'))") :|c|) 12)))
+    (html-response
+     (cl-who:with-html-output-to-string (s nil :prologue t)
+       (:html
+        (:head
+         (:meta :charset "UTF-8")
+         (:meta :name "viewport" :content "width=device-width, initial-scale=1.0")
+         (:title "Task Force SAFE - Electrical Safety Inspections")
+         (:link :rel "stylesheet" :href "/static/css/style.css"))
+        (:body :class "landing-page"
+         ;; Header with login button
+         (:header :class "landing-header"
+           (:div :class "landing-header-logos"
+             (:img :src "/static/img/company_logo.png" :alt "Versar" :class "logo-company")
+             (:img :src "/static/img/TFS_Logo.png" :alt "Task Force SAFE" :class "logo-tfs"))
+           (:a :href "/login" :class "btn btn-primary" "Staff Login"))
+         
+         ;; Hero section
+         (:section :class "landing-hero"
+           (:div :class "landing-hero-content"
+             (:h1 "Task Force SAFE")
+             (:p :class "landing-subtitle" "Electrical Safety Inspection Program")
+             (:p :class "landing-tagline" "Safeguarding Personnel and Facilities Across CENTCOM")))
+         
+         ;; Mission section
+         (:section :class "landing-section"
+           (:div :class "landing-container"
+             (:h2 "Our Mission")
+             (:p "Task Force SAFE (TF SAFE) plays a vital role in safeguarding personnel and facilities, 
+                  reducing risks, and ensuring operational readiness in challenging environments across 
+                  the CENTCOM Area of Responsibility.")
+             (:p "Our teams provide subject matter expertise delivering safe operating conditions 
+                  throughout military installations in Syria, Iraq, Jordan, Kuwait, and surrounding regions.")))
+         
+         ;; Impact section
+         (:section :class "landing-section landing-section-alt"
+           (:div :class "landing-container"
+             (:h2 "Program Impact")
+             (:p :class "landing-stats-intro" "Since July 2020, Task Force SAFE has:")
+             (:div :class "landing-stats"
+               (:div :class "landing-stat"
+                 (:span :class "landing-stat-number" (cl-who:fmt "~:D" facilities-count))
+                 (:span :class "landing-stat-label" "Facilities Inspected"))
+               (:div :class "landing-stat"
+                 (:span :class "landing-stat-number" (cl-who:fmt "~:D" identified-count))
+                 (:span :class "landing-stat-label" "Deficiencies Identified"))
+               (:div :class "landing-stat"
+                 (:span :class "landing-stat-number" (cl-who:fmt "~:D" repaired-count))
+                 (:span :class "landing-stat-label" "Deficiencies Repaired"))
+               (:div :class "landing-stat"
+                 (:span :class "landing-stat-number" (cl-who:fmt "~D" active-teams))
+                 (:span :class "landing-stat-label" "Active Teams")))
            (:p :class "landing-impact" "Through identification and repair of electrical deficiencies, 
                 our field teams have prevented an immeasurable number of electrocutions, shocks, 
                 and fires for facility occupants throughout the AOR.")))
@@ -208,10 +217,10 @@
                (:p "Multi-discipline facility assessments including structural, mechanical, 
                     fire protection, and environmental evaluations.")))))
        
-       ;; Footer
-       (:footer :class "landing-footer"
-         (:p "Task Force SAFE / UFC - CENTCOM Area of Responsibility")
-         (:p :class "landing-footer-sub" "Versar Global Solutions")))))))
+         ;; Footer
+         (:footer :class "landing-footer"
+           (:p "Task Force SAFE / UFC - CENTCOM Area of Responsibility")
+           (:p :class "landing-footer-sub" "Versar Global Solutions"))))))))
 
 ;;; Authentication Handlers
 
@@ -269,7 +278,7 @@
     (when token
       (delete-session token))
     (hunchentoot:set-cookie "session" :value "" :path "/" :max-age 0)
-    (redirect-to "/login")))
+    (redirect-to "/")))
 
 (defun handle-unauthorized ()
   "Unauthorized access page."
