@@ -337,7 +337,7 @@
                          for y = (if (> (+ month i -1) 12) (1+ year) year)
                          do (cl-who:htm
                              (:option :value (format nil "~4,'0D-~2,'0D" y m)
-                                      (cl-who:str (format nil "~A ~D" (month-name m) y)))))))))
+                                      (cl-who:str (format nil "~A ~D" (get-month-name m) y)))))))))
            (:div :id "leave-calendar-preview" :style "min-height: 100px;")
            (:script "
 function loadLeaveCalendar(monthStr) {
