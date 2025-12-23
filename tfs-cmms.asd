@@ -26,4 +26,6 @@
                              (:file "rr")
                              (:file "dar")
                              (:file "reports")
+                             (:file "admin")
+                             (:file "master-tracker")
                              (:file "routes")))))
