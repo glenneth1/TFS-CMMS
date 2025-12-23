@@ -652,3 +652,156 @@
     ((member deficiency-category '("Improper Use / Damaged" "Unlisted Equipment") :test #'string=) 2)
     ((string= deficiency-category "Poor Workmanship") 3)
     (t 3)))
+
+;;; Inspection Report Handlers (moved from routes.lisp)
+
+(defun handle-inspection-reports-list ()
+  "List all inspection reports with optional status filter."
+  (let* ((user (get-current-user))
+         (status-filter (get-param "status"))
+         (show-assigned (and user (or (user-is-admin-p user)
+                                      (string= (string-downcase (or (getf user :|role|) "")) "qc_manager"))))
+         (base-query "SELECT r.*, s.name as site_name, s.code as site_code, u.full_name as assigned_to_name
+                      FROM inspection_reports r
+                      JOIN sites s ON r.site_id = s.id
+                      LEFT JOIN users u ON r.assigned_qc_id = u.id")
+         (reports (cond
+                    ((and status-filter (string= status-filter "rejected"))
+                     (fetch-all (concatenate 'string base-query 
+                                " WHERE r.rejection_count > 0 ORDER BY r.rejection_count DESC, r.created_at DESC LIMIT 100")))
+                    ((and status-filter (> (length status-filter) 0))
+                     (fetch-all (concatenate 'string base-query 
+                                " WHERE r.status = ? ORDER BY r.created_at DESC LIMIT 100") status-filter))
+                    (t (fetch-all (concatenate 'string base-query 
+                                  " ORDER BY r.created_at DESC LIMIT 100"))))))
+    (html-response
+     (render-page "Inspection Reports"
+       (cl-who:with-html-output-to-string (s)
+         (:div :class "page-header"
+           (:h1 "Inspection Reports"))
+         ;; Status filter form
+         (:div :class "filter-bar"
+           (:form :method "get" :action "/inspection-reports" :class "filter-form"
+             (:label :for "status" "Filter by Status:")
+             (:select :name "status" :id "status" :onchange "this.form.submit()"
+               (:option :value "" (cl-who:str (if (or (null status-filter) (string= status-filter "")) "All Statuses ▼" "All Statuses")))
+               (:option :value "Draft" :selected (when (and status-filter (string= status-filter "Draft")) "selected") "Draft")
+               (:option :value "Pending QC" :selected (when (and status-filter (string= status-filter "Pending QC")) "selected") "Pending QC")
+               (:option :value "QC Rejected" :selected (when (and status-filter (string= status-filter "QC Rejected")) "selected") "QC Rejected")
+               (:option :value "QC Approved" :selected (when (and status-filter (string= status-filter "QC Approved")) "selected") "QC Approved")
+               (:option :value "Complete" :selected (when (and status-filter (string= status-filter "Complete")) "selected") "Complete")
+               (:option :value "rejected" :selected (when (and status-filter (string= status-filter "rejected")) "selected") "⚠ Ever Rejected (Return Rate)"))))
+         (:table :class "data-table"
+           (:thead
+             (:tr
+               (:th "Report #")
+               (:th "Site")
+               (:th "Building")
+               (:th "Phase")
+               (:th "Date")
+               (:th "Status")
+               (:th "Rejections")
+               (when show-assigned
+                 (cl-who:htm (:th "Assigned To")))
+               (:th "Actions")))
+           (:tbody
+             (if reports
+                 (dolist (rpt reports)
+                   (cl-who:htm
+                    (:tr
+                      (:td (cl-who:str (getf rpt :|report_number|)))
+                      (:td (cl-who:str (format nil "~A (~A)" 
+                                               (or (getf rpt :|site_name|) "Unknown")
+                                               (or (getf rpt :|site_code|) "-"))))
+                      (:td (cl-who:str (getf rpt :|building_number|)))
+                      (:td (cl-who:str (getf rpt :|inspection_phase|)))
+                      (:td (cl-who:str (format-date-display (getf rpt :|inspection_date|))))
+                      (:td (:span :class "status-badge" (cl-who:str (getf rpt :|status|))))
+                      (:td 
+                        (let ((rej-count (or (getf rpt :|rejection_count|) 0)))
+                          (if (> rej-count 0)
+                              (cl-who:htm (:span :class "rejection-badge" (cl-who:str rej-count)))
+                              (cl-who:htm (cl-who:str "-")))))
+                      (when show-assigned
+                        (cl-who:htm 
+                         (:td (cl-who:str (or (getf rpt :|assigned_to_name|) "-")))))
+                      (:td 
+                        (:a :href (format nil "/inspection-reports/~A" (getf rpt :|id|))
+                            :class "btn btn-sm" "View")))))
+                 (cl-who:htm
+                  (:tr (:td :colspan (if show-assigned "9" "8") :class "empty-state" "No inspection reports found.")))))))))))
+
+(defun handle-inspection-report-new ()
+  "New inspection report form."
+  (let* ((wo-id (parse-int (get-param "wo_id")))
+         (wo (when wo-id (get-work-order wo-id)))
+         (sites (list-sites)))
+    (html-response
+     (render-page "New Inspection Report"
+       (cl-who:with-html-output-to-string (s)
+         (:div :class "page-header"
+           (:h1 "Create Inspection Report")
+           (when wo
+             (cl-who:htm
+              (:p "For Work Order: " (:strong (cl-who:str (getf wo :|wo_number|)))))))
+         (:form :method "post" :action "/api/inspection-reports/create" :class "form-card"
+           (when wo-id
+             (cl-who:htm
+              (:input :type "hidden" :name "wo_id" :value (princ-to-string wo-id))))
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "Site")
+               (:select :name "site_id" :id "site-select" :required t
+                 (:option :value "" "-- Select Site --")
+                 (dolist (site sites)
+                   (let ((selected (and wo (= (getf site :|id|) (getf wo :|site_id|)))))
+                     (cl-who:htm
+                      (:option :value (princ-to-string (getf site :|id|))
+                               :selected selected
+                               (cl-who:str (format nil "~A (~A)" 
+                                                   (getf site :|name|) 
+                                                   (getf site :|code|)))))))))
+             (:div :class "form-group required"
+               (:label "Building Number")
+               (:input :type "text" :name "building_number" :required t
+                       :placeholder "e.g., 11200, GEN-1")))
+           (:div :class "form-row"
+             (:div :class "form-group"
+               (:label "Building Type")
+               (:select :name "building_type"
+                 (:option :value "" "-- Select --")
+                 (dolist (bt *building-types*)
+                   (cl-who:htm (:option :value bt (cl-who:str bt))))))
+             (:div :class "form-group required"
+               (:label "System Voltage")
+               (:select :name "system_voltage" :id "voltage-select" :required t
+                 (dolist (v *system-voltages*)
+                   (cl-who:htm 
+                    (:option :value (car v) 
+                             (cl-who:str (format nil "~A (~A)" (car v) (cdr v)))))))))
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "Inspection Phase")
+               (:select :name "inspection_phase" :required t
+                 (dolist (phase *inspection-phases*)
+                   (cl-who:htm (:option :value phase (cl-who:str phase))))))
+             (:div :class "form-group required"
+               (:label "Team Number")
+               (:input :type "text" :name "team_number" :required t
+                       :placeholder "e.g., 102"
+                       :value (or (when wo (getf wo :|assigned_to|)) ""))))
+           (:div :class "form-row"
+             (:div :class "form-group required"
+               (:label "Inspection Date")
+               (:input :type "date" :name "inspection_date" :required t))
+             (:div :class "form-group"
+               (:label "Previous Report # (if Re-inspection)")
+               (:input :type "text" :name "previous_report" :placeholder "Leave blank for initial")))
+           (:div :class "form-group"
+             (:label "Physical Building Location Description")
+             (:textarea :name "location_description" :rows "2" 
+                        :placeholder "e.g., Mayor cell building, near main gate..."))
+           (:div :class "form-actions"
+             (:button :type "submit" :class "btn btn-primary" "Create Report")
+             (:a :href (if wo-id (format nil "/work-orders/~A" wo-id) "/work-orders")
+                 :class "btn" "Cancel"))))))))
