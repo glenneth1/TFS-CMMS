@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Let these forms submit normally (server handles redirect)
     if (action.includes('/inspection-reports/create') ||
         action.includes('/create-reinspection') ||
+        action.includes('/generate-mrf') ||
         action.includes('/mrf/') ||
         action.includes('/dar/') ||
         action.includes('/irp/') ||

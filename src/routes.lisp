@@ -782,28 +782,34 @@
                    (role-lower (string-downcase (or role ""))))
                (cond
                  ;; QC Dashboard (QC, qc_manager)
-                 ((or (string= role-lower "qc") (string= role-lower "qc_manager"))
-                  (let* ((is-qc-manager (string= role-lower "qc_manager"))
-                         (user-id (or (getf user :|id|) (getf user :|user_id|)))
-                         (qc-users (get-qc-users))
-                         (pending-reports (if is-qc-manager
-                                              ;; QC Manager sees all pending reports
-                                              (fetch-all 
-                                               "SELECT r.*, s.name as site_name, u.full_name as assigned_to_name
-                                                FROM inspection_reports r 
-                                                JOIN sites s ON r.site_id = s.id 
-                                                LEFT JOIN users u ON r.assigned_qc_id = u.id
-                                                WHERE r.status = 'Pending QC' 
-                                                ORDER BY r.assigned_qc_id IS NULL DESC, r.created_at DESC")
-                                              ;; QC Specialists see only their assigned reports
-                                              (fetch-all 
-                                               "SELECT r.*, s.name as site_name 
-                                                FROM inspection_reports r 
-                                                JOIN sites s ON r.site_id = s.id 
-                                                WHERE r.status = 'Pending QC' 
-                                                  AND r.assigned_qc_id = ?
-                                                ORDER BY r.created_at DESC"
-                                               user-id))))
+                ((or (string= role-lower "qc") (string= role-lower "qc_manager"))
+                 (let* ((is-qc-manager (string= role-lower "qc_manager"))
+                        (user-id (or (getf user :|id|) (getf user :|user_id|)))
+                        (qc-users (get-qc-users))
+                        (pending-reports (if is-qc-manager
+                                             ;; QC Manager sees all pending reports with MRF info
+                                             (fetch-all 
+                                              "SELECT r.*, s.name as site_name, u.full_name as assigned_to_name,
+                                                      mr.id as mrf_id, mr.mrf_number, mr.status as mrf_status,
+                                                      (SELECT COUNT(*) FROM material_request_items WHERE mrf_id = mr.id) as mrf_item_count
+                                               FROM inspection_reports r 
+                                               JOIN sites s ON r.site_id = s.id 
+                                               LEFT JOIN users u ON r.assigned_qc_id = u.id
+                                               LEFT JOIN material_requests mr ON mr.inspection_report_id = r.id
+                                               WHERE r.status = 'Pending QC' 
+                                               ORDER BY r.assigned_qc_id IS NULL DESC, r.created_at DESC")
+                                             ;; QC Specialists see only their assigned reports with MRF info
+                                             (fetch-all 
+                                              "SELECT r.*, s.name as site_name,
+                                                      mr.id as mrf_id, mr.mrf_number, mr.status as mrf_status,
+                                                      (SELECT COUNT(*) FROM material_request_items WHERE mrf_id = mr.id) as mrf_item_count
+                                               FROM inspection_reports r 
+                                               JOIN sites s ON r.site_id = s.id 
+                                               LEFT JOIN material_requests mr ON mr.inspection_report_id = r.id
+                                               WHERE r.status = 'Pending QC' 
+                                                 AND r.assigned_qc_id = ?
+                                               ORDER BY r.created_at DESC"
+                                              user-id))))
                     (cl-who:htm
                      (:section :class "card"
                        (:h2 (cl-who:str (if is-qc-manager "All Reports Awaiting QC" "My Assigned Reports"))
@@ -814,7 +820,7 @@
                             (:table :class "data-table"
                               (:thead
                                 (:tr (:th "Report #") (:th "Site") (:th "Building") 
-                                     (:th "Inspector") (:th "Submitted") 
+                                     (:th "Inspector") (:th "Submitted") (:th "MRF")
                                      (when is-qc-manager
                                        (cl-who:htm (:th "Assigned To")))
                                      (:th "Action")))
@@ -827,6 +833,13 @@
                                      (:td (cl-who:str (getf rpt :|building_number|)))
                                      (:td (cl-who:str (getf rpt :|inspector1_name|)))
                                      (:td (cl-who:str (getf rpt :|inspector1_signed_at|)))
+                                     (:td (if (getf rpt :|mrf_id|)
+                                              (cl-who:htm
+                                               (:a :href (format nil "/mrf/~A" (getf rpt :|mrf_id|))
+                                                   :class "badge badge-info"
+                                                   :title (format nil "~A items" (or (getf rpt :|mrf_item_count|) 0))
+                                                   "MRF"))
+                                              (cl-who:htm (:span :class "text-muted" "-"))))
                                      (when is-qc-manager
                                        (cl-who:htm
                                         (:td 
@@ -2061,8 +2074,10 @@ function updateDatesFromWeek() {
                            (:dt "Items") (:dd (cl-who:str (format nil "~A item(s)" 
                                                                    (or (getf mrf :|item_count|) 0)))))
                          (:div :class "page-actions" :style "margin-top: 1rem;"
-                           (:a :href (format nil "/mrf/~A" (getf mrf :|id|))
-                               :class "btn btn-primary" "View/Edit MRF")
+                           (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)
+                             (cl-who:htm
+                              (:a :href (format nil "/mrf/~A" (getf mrf :|id|))
+                                  :class "btn btn-primary" "Edit MRF Items")))
                            (:a :href (format nil "/mrf/~A/print" (getf mrf :|id|))
                                :class "btn" :target "_blank" "Print MRF")))
                         (cl-who:htm
@@ -2078,16 +2093,19 @@ function updateDatesFromWeek() {
                (cond
                  ;; Draft - can submit for QC
                  ((string= (getf report :|status|) "Draft")
-                  (cl-who:htm
-                   (:form :method "post" :action (format nil "/api/inspection-reports/~A/submit" report-id)
-                     (:div :class "form-row"
-                       (:div :class "form-group required"
-                         (:label "Inspector 1 Name")
-                         (:input :type "text" :name "inspector1_name" :required t))
-                       (:div :class "form-group"
-                         (:label "Inspector 2 Name")
-                         (:input :type "text" :name "inspector2_name")))
-                     (:button :type "submit" :class "btn btn-primary" "Submit for QC Review"))))
+                  (let ((has-mrf (and (string= "Yes" (getf report :|mrf_needed|))
+                                      (get-mrf-by-report report-id))))
+                    (cl-who:htm
+                     (:form :method "post" :action (format nil "/api/inspection-reports/~A/submit" report-id)
+                       (:div :class "form-row"
+                         (:div :class "form-group required"
+                           (:label "Inspector 1 Name")
+                           (:input :type "text" :name "inspector1_name" :required t))
+                         (:div :class "form-group"
+                           (:label "Inspector 2 Name")
+                           (:input :type "text" :name "inspector2_name")))
+                       (:button :type "submit" :class "btn btn-primary" 
+                                (cl-who:str (if has-mrf "Submit Report & MRF for QC Review" "Submit for QC Review")))))))
                  
                  ;; Pending QC - QC can approve/reject
                  ((string= (getf report :|status|) "Pending QC")
@@ -2788,14 +2806,18 @@ function updateWeeklyDatesFromWeek() {
     (redirect-to (format nil "/inspection-reports/~A" report-id))))
 
 (defun handle-api-inspection-report-submit (id)
-  "Submit report for QC review."
+  "Submit report and linked MRF for QC review."
   (let* ((report-id (parse-int id))
          (user (get-current-user))
          (user-id (getf user :|id|))
          (inspector1-name (get-param "inspector1_name"))
          (inspector2-name (get-param "inspector2_name"))
-         (report (get-inspection-report report-id)))
+         (report (get-inspection-report report-id))
+         (linked-mrf (get-mrf-by-report report-id)))
     (submit-report-for-qc report-id inspector1-name inspector2-name)
+    ;; Also submit linked MRF
+    (when linked-mrf
+      (update-mrf-status (getf linked-mrf :|id|) "Submitted"))
     ;; Record who submitted the report for notifications
     (execute-sql "UPDATE inspection_reports SET submitted_by_user_id = ? WHERE id = ?" user-id report-id)
     ;; Notify QC team
@@ -2803,22 +2825,27 @@ function updateWeeklyDatesFromWeek() {
     (redirect-to (format nil "/inspection-reports/~A" report-id))))
 
 (defun handle-api-inspection-report-qc-approve (id)
-  "QC approve a report."
+  "QC approve a report and its linked MRF."
   (let* ((report-id (parse-int id))
          (report (get-inspection-report report-id))
          (qc-name (get-param "qc_name"))
          (qc-comments (or (get-param "qc_comments") ""))
-         (submitted-by (getf report :|submitted_by_user_id|)))
+         (submitted-by (getf report :|submitted_by_user_id|))
+         (linked-mrf (get-mrf-by-report report-id)))
     (qc-approve-report report-id qc-name qc-comments)
     (finalize-report report-id)
+    ;; Also approve linked MRF (this will deduct inventory)
+    (when linked-mrf
+      (update-mrf-status (getf linked-mrf :|id|) "Approved" :approved-by qc-name))
     ;; Notify submitting inspector
     (when submitted-by
       (execute-sql 
        "INSERT INTO notifications (user_id, title, message, link) VALUES (?, ?, ?, ?)"
        submitted-by
        "Report Approved - Signature Required"
-       (format nil "Report ~A has been approved by QC. Please sign and finalize." 
-               (getf report :|report_number|))
+       (format nil "Report ~A has been approved by QC.~A Please sign and finalize." 
+               (getf report :|report_number|)
+               (if linked-mrf " MRF also approved." ""))
        (format nil "/inspection-reports/~A" report-id)))
     (redirect-to (format nil "/inspection-reports/~A" report-id))))
 
@@ -2833,18 +2860,22 @@ function updateWeeklyDatesFromWeek() {
     (redirect-to (format nil "/inspection-reports/~A" new-report-id))))
 
 (defun handle-api-inspection-report-qc-reject (id)
-  "QC reject a report."
+  "QC reject a report and reset its linked MRF to Draft."
   (let* ((report-id (parse-int id))
          (report (get-inspection-report report-id))
          (qc-name (get-param "qc_name"))
          (qc-comments (or (get-param "qc_comments") ""))
          (submitted-by (getf report :|submitted_by_user_id|))
          (current-rejection-count (or (getf report :|rejection_count|) 0))
-         (new-rejection-number (1+ current-rejection-count)))
+         (new-rejection-number (1+ current-rejection-count))
+         (linked-mrf (get-mrf-by-report report-id)))
     (qc-reject-report report-id qc-name qc-comments)
     ;; Increment rejection counter
     (execute-sql "UPDATE inspection_reports SET rejection_count = ? WHERE id = ?" 
                  new-rejection-number report-id)
+    ;; Reset linked MRF to Draft so inspector can modify it
+    (when linked-mrf
+      (update-mrf-status (getf linked-mrf :|id|) "Draft"))
     ;; Record rejection history
     (execute-sql 
      "INSERT INTO rejection_history (report_id, rejection_number, team_number, qc_name, qc_comments, submitted_at)
@@ -2858,8 +2889,10 @@ function updateWeeklyDatesFromWeek() {
        "INSERT INTO notifications (user_id, title, message, link) VALUES (?, ?, ?, ?)"
        submitted-by
        "Report Rejected - Corrections Needed"
-       (format nil "Report ~A was rejected by ~A. Comments: ~A" 
-               (getf report :|report_number|) qc-name qc-comments)
+       (format nil "Report ~A was rejected by ~A.~A Comments: ~A" 
+               (getf report :|report_number|) qc-name 
+               (if linked-mrf " MRF returned to Draft." "")
+               qc-comments)
        (format nil "/inspection-reports/~A" report-id)))
     (redirect-to (format nil "/inspection-reports/~A" report-id))))
 

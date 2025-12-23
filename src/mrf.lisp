@@ -13,6 +13,20 @@
     (declare (ignore second minute hour))
     (format nil "~4,'0D-~2,'0D-~2,'0D" year month date)))
 
+(defun escape-json-string (str)
+  "Escape special characters in a string for JSON output."
+  (if (null str)
+      ""
+      (with-output-to-string (out)
+        (loop for char across str do
+          (case char
+            (#\" (write-string "\\\"" out))
+            (#\\ (write-string "\\\\" out))
+            (#\Newline (write-string "\\n" out))
+            (#\Return (write-string "\\r" out))
+            (#\Tab (write-string "\\t" out))
+            (otherwise (write-char char out)))))))
+
 ;;; ============================================================
 ;;; MRF Database Functions
 ;;; ============================================================
@@ -50,7 +64,7 @@
 (defun create-mrf-from-inspection (report-id)
   "Create a new MRF linked to an inspection report."
   (let* ((report (fetch-one 
-                  "SELECT ir.*, s.name as site_name, s.location as site_location
+                  "SELECT ir.*, s.name as site_name
                    FROM inspection_reports ir
                    LEFT JOIN sites s ON ir.site_id = s.id
                    WHERE ir.id = ?" report-id))
@@ -159,7 +173,9 @@
     ((string= new-status "Approved")
      (execute-sql 
       "UPDATE material_requests SET status = ?, approved_by = ?, approved_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
-      new-status approved-by mrf-id))
+      new-status approved-by mrf-id)
+     ;; Deduct inventory for approved MRF items
+     (deduct-inventory-for-mrf mrf-id))
     ((string= new-status "Issued")
      (execute-sql 
       "UPDATE material_requests SET status = ?, issued_by = ?, issued_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
@@ -168,6 +184,29 @@
      (execute-sql 
       "UPDATE material_requests SET status = ?, updated_at = datetime('now') WHERE id = ?"
       new-status mrf-id))))
+
+(defun deduct-inventory-for-mrf (mrf-id)
+  "Deduct inventory quantities for all items in an approved MRF that are linked to inventory."
+  (let ((items (fetch-all 
+                "SELECT mri.id, mri.item_id, mri.quantity_requested, ii.part_number, ii.quantity_on_hand
+                 FROM material_request_items mri
+                 LEFT JOIN inventory_items ii ON mri.item_id = ii.id
+                 WHERE mri.mrf_id = ? AND mri.item_id IS NOT NULL"
+                mrf-id)))
+    (dolist (item items)
+      (let ((item-id (getf item :|item_id|))
+            (qty-requested (or (getf item :|quantity_requested|) 0))
+            (qty-on-hand (or (getf item :|quantity_on_hand|) 0)))
+        (when (and item-id (> qty-requested 0))
+          ;; Deduct from inventory (allow negative for backorder tracking)
+          (execute-sql 
+           "UPDATE inventory_items SET quantity_on_hand = quantity_on_hand - ?, updated_at = datetime('now') WHERE id = ?"
+           qty-requested item-id)
+          ;; Record the transaction
+          (execute-sql
+           "INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, notes, created_at)
+            VALUES (?, 'OUT', ?, 'MRF', ?, 'Deducted on MRF approval', datetime('now'))"
+           item-id qty-requested mrf-id))))))
 
 (defun get-inventory-for-mrf-dropdown ()
   "Get inventory items for part number dropdown."
@@ -339,27 +378,18 @@
                   (:h3 :style "margin-top: 1.5rem;" "Add Item")
                   (:form :method "post" :action (format nil "/api/mrf/~A/item" id)
                     (:div :style "display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;"
-                      (:div
+                      (:div :style "position: relative;"
                         (:label "Part Number")
-                        (:select :name "part_number" :id "part-select" :style "width: 100%;"
-                                 :onchange "updateDescription(this)"
-                          (:option :value "" "N/A (Manual Entry)")
-                          (dolist (part inventory-parts)
-                            (cl-who:htm
-                             (:option :value (getf part :|part_number|)
-                                      :data-description (getf part :|description|)
-                                      :data-uom (getf part :|uom|)
-                                      :data-id (format nil "~A" (getf part :|id|))
-                                      (cl-who:fmt "~A - ~A" 
-                                                  (getf part :|part_number|)
-                                                  (let ((desc (getf part :|description|)))
-                                                    (if (> (length desc) 40)
-                                                        (format nil "~A..." (subseq desc 0 40))
-                                                        desc))))))))
-                      (:div
+                        (:input :type "text" :name "part_number" :id "part-input" 
+                                :style "width: 100%;" :autocomplete "off"
+                                :placeholder "Type to search...")
+                        (:div :id "part-suggestions" :class "autocomplete-suggestions"))
+                      (:div :style "position: relative;"
                         (:label "Description")
                         (:input :type "text" :name "description" :id "description-input" 
-                                :style "width: 100%;" :required t))
+                                :style "width: 100%;" :required t :autocomplete "off"
+                                :placeholder "Type to search or enter manually...")
+                        (:div :id "desc-suggestions" :class "autocomplete-suggestions"))
                       (:div
                         (:label "Quantity")
                         (:input :type "number" :name "quantity" :min "1" :value "1" 
@@ -388,34 +418,87 @@
                     (:input :type "hidden" :name "item_id" :id "item-id-input" :value "")
                     (:button :type "submit" :class "btn btn-primary" "Add Item"))
                   
-                  ;; JavaScript for auto-fill
+                  ;; Inventory data for autocomplete
+                  (:script 
+                   (cl-who:str 
+                    (format nil "var inventoryItems = ~A;" 
+                            (with-output-to-string (out)
+                              (format out "[")
+                              (loop for part in inventory-parts
+                                    for i from 0
+                                    do (when (> i 0) (format out ","))
+                                       (format out "{\"id\":~A,\"pn\":~S,\"desc\":~S,\"uom\":~S}"
+                                               (getf part :|id|)
+                                               (escape-json-string (or (getf part :|part_number|) ""))
+                                               (escape-json-string (or (getf part :|description|) ""))
+                                               (escape-json-string (or (getf part :|uom|) ""))))
+                              (format out "]")))))
+                  
+                  ;; JavaScript for autocomplete
                   (:script "
-function updateDescription(select) {
-  var option = select.options[select.selectedIndex];
-  var descInput = document.getElementById('description-input');
-  var uomInput = document.getElementById('uom-input');
-  var itemIdInput = document.getElementById('item-id-input');
+var partInput = document.getElementById('part-input');
+var descInput = document.getElementById('description-input');
+var uomInput = document.getElementById('uom-input');
+var itemIdInput = document.getElementById('item-id-input');
+var partSuggestions = document.getElementById('part-suggestions');
+var descSuggestions = document.getElementById('desc-suggestions');
+
+function showSuggestions(input, container, searchField) {
+  var query = input.value.toLowerCase();
+  container.innerHTML = '';
+  if (query.length < 2) { container.style.display = 'none'; return; }
   
-  if (option.value === '') {
-    descInput.value = '';
-    descInput.readOnly = false;
-    uomInput.value = '';
-    itemIdInput.value = '';
-  } else {
-    descInput.value = option.getAttribute('data-description') || '';
-    descInput.readOnly = true;
-    uomInput.value = option.getAttribute('data-uom') || '';
-    itemIdInput.value = option.getAttribute('data-id') || '';
-  }
+  var matches = inventoryItems.filter(function(item) {
+    return item[searchField].toLowerCase().indexOf(query) !== -1;
+  }).slice(0, 10);
+  
+  if (matches.length === 0) { container.style.display = 'none'; return; }
+  
+  matches.forEach(function(item) {
+    var div = document.createElement('div');
+    div.className = 'autocomplete-item';
+    div.innerHTML = '<strong>' + item.pn + '</strong> - ' + item.desc;
+    div.onclick = function() {
+      partInput.value = item.pn;
+      descInput.value = item.desc;
+      uomInput.value = item.uom;
+      itemIdInput.value = item.id;
+      partSuggestions.style.display = 'none';
+      descSuggestions.style.display = 'none';
+    };
+    container.appendChild(div);
+  });
+  container.style.display = 'block';
 }
+
+partInput.addEventListener('input', function() {
+  itemIdInput.value = '';
+  showSuggestions(partInput, partSuggestions, 'pn');
+});
+
+descInput.addEventListener('input', function() {
+  itemIdInput.value = '';
+  showSuggestions(descInput, descSuggestions, 'desc');
+});
+
+document.addEventListener('click', function(e) {
+  if (!partInput.contains(e.target) && !partSuggestions.contains(e.target)) {
+    partSuggestions.style.display = 'none';
+  }
+  if (!descInput.contains(e.target) && !descSuggestions.contains(e.target)) {
+    descSuggestions.style.display = 'none';
+  }
+});
 "))))
              
-             ;; Status actions
-             (when (string= (getf mrf :|status|) "Draft")
-               (cl-who:htm
-                (:div :class "card" :style "margin-top: 1rem;"
-                  (:form :method "post" :action (format nil "/api/mrf/~A/submit" id)
-                    (:button :type "submit" :class "btn btn-primary" "Submit MRF"))))))))
+             ;; Navigation - Return to Report if linked
+             (let ((report-id (getf mrf :|inspection_report_id|)))
+               (when report-id
+                 (cl-who:htm
+                  (:div :class "card" :style "margin-top: 1rem;"
+                    (:p :class "text-muted" "This MRF is linked to an inspection report. Submit both from the report page.")
+                    (:a :href (format nil "/inspection-reports/~A" report-id)
+                        :class "btn btn-primary" "← Return to Inspection Report"))))))))
         (html-response
          (render-page "MRF Not Found"
            (cl-who:with-html-output-to-string (s)
