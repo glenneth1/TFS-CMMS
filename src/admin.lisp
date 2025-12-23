@@ -184,6 +184,11 @@
                         (:label "Team Number")
                         (:input :type "text" :name "team_number" :placeholder "e.g., 230"
                                 :value (or (getf edit-user :|team_number|) ""))))
+                    (:div :class "form-group"
+                      (:label "Current Location (Work Site)")
+                      (:input :type "text" :name "current_location" 
+                              :placeholder "e.g., Iraq - Erbil, Syria - NLZ"
+                              :value (or (getf edit-user :|current_location|) "")))
                     (:div :class "form-row"
                       (:div :class "form-group"
                         (:label "Hire Date")
@@ -272,6 +277,7 @@
               (role (get-param "role"))
               (electrician-type (get-param "electrician_type"))
               (team-number (get-param "team_number"))
+              (current-location (get-param "current_location"))
               (hire-date (get-param "hire_date"))
               (bog-date (get-param "bog_date"))
               (active (parse-int (get-param "active")))
@@ -285,8 +291,11 @@
                        :hire-date (when (and hire-date (not (string= hire-date ""))) hire-date)
                        :bog-date (when (and bog-date (not (string= bog-date ""))) bog-date)
                        :active (= active 1))
-          ;; Update is_admin flag separately
-          (execute-sql "UPDATE users SET is_admin = ? WHERE id = ?" (or is-admin 0) user-id)
+          ;; Update is_admin and current_location separately
+          (execute-sql "UPDATE users SET is_admin = ?, current_location = ? WHERE id = ?" 
+                       (or is-admin 0) 
+                       (when (and current-location (not (string= current-location ""))) current-location)
+                       user-id)
           (redirect-to "/admin/users"))
         (redirect-to "/unauthorized"))))
 
