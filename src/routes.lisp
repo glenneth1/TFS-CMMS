@@ -86,7 +86,7 @@
               (:li (:a :href "/irp" "IRP"))
               (when (and user (user-can-generate-sar-p user))
                 (cl-who:htm (:li (:a :href "/sar" "SAR"))))
-              (:li (:a :href "/reports" "Inspection Reports"))
+              (:li (:a :href "/reports" "Work Orders"))
               (when (and user (user-can-access-master-tracker-p user))
                 (cl-who:htm (:li (:a :href "/master-tracker" "Master Tracker"))))))
           ;; Resources dropdown
@@ -1005,16 +1005,18 @@ function updateWoDatesFromWeek() {
 
 (defun handle-reports ()
   "Reports page with date range and status selection."
-  (let* ((site-id (parse-int (get-param "site")))
+  (let* ((site-param (get-param "site"))
+         (all-sites-p (equal site-param "all"))
+         (site-id (unless all-sites-p (parse-int site-param)))
          (date-from (get-param "date_from"))
          (date-to (get-param "date_to"))
          (status-filter (get-param "status"))
          (contract-week (get-param "contract_week"))
          (sites (list-sites)))
-    (if (and site-id date-from date-to)
+    (if (and (or site-id all-sites-p) date-from date-to)
         ;; Generate detailed report with date range and optional status filter
-        (let* ((site (get-site site-id))
-               (work-orders (list-work-orders :site-id site-id 
+        (let* ((site (when site-id (get-site site-id)))
+               (work-orders (list-work-orders :site-id (unless all-sites-p site-id)
                                               :date-from date-from 
                                               :date-to date-to
                                               :status (when (and status-filter 
@@ -1033,7 +1035,7 @@ function updateWoDatesFromWeek() {
                                             (equal (getf wo :|work_type|) "Re-inspection/Repair"))
                                           work-orders)))
           (html-response
-           (render-page (format nil "Report - ~A" (getf site :|code|))
+           (render-page (format nil "Report - ~A" (if all-sites-p "All Sites" (getf site :|code|)))
              (cl-who:with-html-output-to-string (s)
                (:style "
                  @page {
@@ -1135,17 +1137,19 @@ function updateWoDatesFromWeek() {
                  (:div :class "report-title-center"
                    (:p :style "font-size: 0.75rem; margin: 0; color: #666;" "TF SAFE CMMS - Report")
                    (:h1 (cl-who:str (if (and contract-week (> (length contract-week) 0))
-                                       (format nil "Inspection Schedule Report - ~A" contract-week)
-                                       "Inspection Schedule Report")))
+                                       (format nil "Work Orders Report - ~A" contract-week)
+                                       "Work Orders Report")))
                    (:p "Task Force SAFE - CENTCOM AOR"))
                  (:img :src "/static/img/TFS_Logo.png" :alt "Task Force SAFE"))
                (:div :class "no-print" :style "margin-bottom: 1rem;"
                  (:button :onclick "window.print()" :class "btn btn-primary" "Print / Save as PDF"))
                (:div :class "report-header card"
                  (:div :class "report-meta"
-                   (:p (:strong "Site: ") (cl-who:fmt "~A (~A)" 
-                                                     (getf site :|name|)
-                                                     (getf site :|code|)))
+                   (:p (:strong "Site: ") (cl-who:str (if all-sites-p 
+                                                        "All Sites"
+                                                        (format nil "~A (~A)" 
+                                                                (getf site :|name|)
+                                                                (getf site :|code|)))))
                    (when (and contract-week (> (length contract-week) 0))
                      (cl-who:htm
                       (:p (:strong "Contract Week: ") (cl-who:str contract-week))))
@@ -1214,11 +1218,11 @@ function updateWoDatesFromWeek() {
                (:div :class "card" :style "margin-bottom: 1rem;"
                  (:h2 "Report Types")
                  (:div :style "display: flex; gap: 1rem; flex-wrap: wrap;"
-                   (:a :href "/reports" :class "btn btn-primary" "Inspection Reports")
+                   (:a :href "/reports" :class "btn btn-primary" "Work Orders Report")
                    (:a :href "/reports/inventory-issues" :class "btn btn-secondary" "Inventory Issues")))
                
                (:div :class "card"
-                 (:h2 "Generate Inspection Report")
+                 (:h2 "Generate Work Orders Report")
                  (:p "Select a site and either a contract week OR a custom date range.")
                  (:form :method "get" :action "/reports" :class "report-form" :id "report-form"
                    (:div :class "form-row"
@@ -1226,6 +1230,7 @@ function updateWoDatesFromWeek() {
                        (:label "Site")
                        (:select :name "site" :required t
                          (:option :value "" "Select Site...")
+                         (:option :value "all" :selected (equal site-id "all") "All Sites")
                          (dolist (site sites)
                            (cl-who:htm
                             (:option :value (princ-to-string (getf site :|id|))
