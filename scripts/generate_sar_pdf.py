@@ -89,9 +89,9 @@ def generate_site_page_html(site_name, reports, report_date, army_logo_path, tfs
         building = report.get('building_number') or '-'
         tag_id = report.get('report_number') or '-'
         
-        # Reports Submitted - YES if status is Submitted or Approved
+        # Reports Submitted - YES if status is Complete or QC Approved
         status = report.get('status') or ''
-        reports_submitted = 'YES' if status in ('Submitted', 'Approved', 'QC Approved') else 'NO'
+        reports_submitted = 'YES' if status in ('Complete', 'QC Approved', 'Pending QC') else 'NO'
         reports_class = 'yes' if reports_submitted == 'YES' else 'no'
         
         # SPLO and EWP - placeholder for safety data (will be YES for now if report submitted)
