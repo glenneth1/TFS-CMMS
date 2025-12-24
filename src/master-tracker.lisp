@@ -275,7 +275,7 @@ function updateWeeklyDatesFromWeek() {
               (:section :class "card"
                 (:h2 "Generated Slides")
                 (:p "Click on any image to download it for PowerPoint.")
-                (:div :class "form-actions" :style "margin-bottom: 1rem;"
+                (:div :class "form-actions" :style "margin-bottom: 1rem; flex-wrap: wrap;"
                   (:a :href (format nil "/reports/~A/01_operational_updates.png" report-dir)
                       :download "01_operational_updates.png" :class "btn" "Download Slide 1")
                   (:a :href (format nil "/reports/~A/02_weekly_by_country.png" report-dir)
@@ -285,7 +285,11 @@ function updateWeeklyDatesFromWeek() {
                   (:a :href (format nil "/reports/~A/04_cumulative_stats.png" report-dir)
                       :download "04_cumulative_stats.png" :class "btn" "Download Slide 4")
                   (:a :href (format nil "/reports/~A/05_90_day_stats.png" report-dir)
-                      :download "05_90_day_stats.png" :class "btn" "Download Slide 5")))
+                      :download "05_90_day_stats.png" :class "btn" "Download Slide 5")
+                  (:a :href (format nil "/reports/~A/06_combined_deficiency_comparison.png" report-dir)
+                      :download "06_combined_deficiency_comparison.png" :class "btn" "Download Slide 6")
+                  (:a :href (format nil "/reports/~A/07_repair_responsibility.png" report-dir)
+                      :download "07_repair_responsibility.png" :class "btn" "Download Slide 7")))
               (:section :class "card"
                 (:h3 "Slide 1: Operational Updates")
                 (:img :src (format nil "/reports/~A/01_operational_updates.png" report-dir)
@@ -305,6 +309,14 @@ function updateWeeklyDatesFromWeek() {
               (:section :class "card"
                 (:h3 "Slide 5: 90-Day Stats")
                 (:img :src (format nil "/reports/~A/05_90_day_stats.png" report-dir)
+                      :style "max-width: 100%; border: 1px solid #ccc;"))
+              (:section :class "card"
+                (:h3 "Slide 6: Combined Deficiency Comparison")
+                (:img :src (format nil "/reports/~A/06_combined_deficiency_comparison.png" report-dir)
+                      :style "max-width: 100%; border: 1px solid #ccc;"))
+              (:section :class "card"
+                (:h3 "Slide 7: Repair Responsibility")
+                (:img :src (format nil "/reports/~A/07_repair_responsibility.png" report-dir)
                       :style "max-width: 100%; border: 1px solid #ccc;"))))
            ;; Show message if no images yet
            (unless images-exist
