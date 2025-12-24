@@ -469,11 +469,16 @@
          (new-report-number (generate-report-number site-code building-number team-number
                                                      date-formatted first-def last-def 
                                                      inspection-phase)))
-    (execute-sql 
-     "UPDATE inspection_reports 
-      SET status = 'Complete', report_number = ?, updated_at = datetime('now')
-      WHERE id = ?"
-     new-report-number report-id)))
+    ;; Generate new tag_id with deficiency range
+    (let ((def-range (if (and first-def last-def) (format nil "~A-~A" first-def last-def) "0")))
+      (execute-sql 
+       "UPDATE inspection_reports 
+        SET status = 'Complete', report_number = ?, 
+            tag_id = ?, updated_at = datetime('now')
+        WHERE id = ?"
+       new-report-number 
+       (format nil "TFSAFE_~A_~A_~A_~A_~A" site-code building-number team-number date-formatted def-range)
+       report-id))))
 
 (defun create-reinspection-report (original-report-id &key team-number inspection-date)
   "Create a re-inspection report by cloning an existing completed report.
