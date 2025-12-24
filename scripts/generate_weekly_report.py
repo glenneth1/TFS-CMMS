@@ -156,6 +156,65 @@ def get_90_day_stats(conn):
     return df
 
 
+def get_repair_responsibility_stats(conn, start_date=None, end_date=None):
+    """Get deficiency breakdown by repair responsibility (TF SAFE, O&M, Military)."""
+    date_filter = ""
+    params = []
+    if start_date and end_date:
+        date_filter = "WHERE md.inspection_date >= ? AND md.inspection_date <= ?"
+        params = [start_date, end_date]
+    
+    query = f"""
+        SELECT 
+            COALESCE(md.repair_by, 'Unassigned') as repair_by,
+            md.inspection_phase,
+            SUM(CASE WHEN md.deficiency_status = 'Open' THEN 1 ELSE 0 END) as open_count,
+            SUM(CASE WHEN md.deficiency_status LIKE '%Closed%' OR md.deficiency_status LIKE '%Repaired%' THEN 1 ELSE 0 END) as closed_count,
+            SUM(CASE WHEN md.deficiency_status LIKE '%Mitigated%' THEN 1 ELSE 0 END) as mitigated_count,
+            COUNT(*) as total
+        FROM master_deficiencies md
+        {date_filter}
+        GROUP BY md.repair_by, md.inspection_phase
+        ORDER BY repair_by, inspection_phase
+    """
+    df = pd.read_sql_query(query, conn, params=params)
+    return df
+
+
+def get_combined_period_stats(conn, weekly_start, weekly_end):
+    """Get combined stats for all three periods: Cumulative, Weekly, 90-day."""
+    # 90-day range
+    day90_end = datetime.now().strftime('%Y-%m-%d')
+    day90_start = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    
+    query = """
+        SELECT 
+            'Cumulative' as period,
+            COUNT(*) as total_deficiencies,
+            SUM(CASE WHEN deficiency_status = 'Open' THEN 1 ELSE 0 END) as open_count,
+            SUM(CASE WHEN deficiency_status LIKE '%Closed%' OR deficiency_status LIKE '%Repaired%' THEN 1 ELSE 0 END) as closed_count
+        FROM master_deficiencies
+        UNION ALL
+        SELECT 
+            'Last 90 Days' as period,
+            COUNT(*) as total_deficiencies,
+            SUM(CASE WHEN deficiency_status = 'Open' THEN 1 ELSE 0 END) as open_count,
+            SUM(CASE WHEN deficiency_status LIKE '%Closed%' OR deficiency_status LIKE '%Repaired%' THEN 1 ELSE 0 END) as closed_count
+        FROM master_deficiencies
+        WHERE inspection_date >= ? AND inspection_date <= ?
+        UNION ALL
+        SELECT 
+            'This Week' as period,
+            COUNT(*) as total_deficiencies,
+            SUM(CASE WHEN deficiency_status = 'Open' THEN 1 ELSE 0 END) as open_count,
+            SUM(CASE WHEN deficiency_status LIKE '%Closed%' OR deficiency_status LIKE '%Repaired%' THEN 1 ELSE 0 END) as closed_count
+        FROM master_deficiencies
+        WHERE inspection_date >= ? AND inspection_date <= ?
+    """
+    df = pd.read_sql_query(query, conn, params=[day90_start, day90_end, weekly_start, weekly_end])
+    return df
+
+
 def generate_operational_updates_slide(weekly_stats, start_date, end_date, output_path):
     """Generate the Operational Updates slide (REDi format)."""
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -373,6 +432,158 @@ def generate_90_day_chart(stats_90_day, output_path):
     print(f"  Generated: {output_path}")
 
 
+def generate_combined_deficiency_chart(combined_stats, start_date, end_date, output_path):
+    """Generate professional combined chart showing Cumulative, 90-Day, and Weekly data together."""
+    if combined_stats.empty:
+        print("  No combined data to chart")
+        return
+    
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    # Set up the data
+    periods = combined_stats['period'].tolist()
+    x = range(len(periods))
+    width = 0.25
+    
+    # Create grouped bars for Open, Closed, Total
+    bars_total = ax.bar([i - width for i in x], combined_stats['total_deficiencies'], 
+                        width, label='Total Deficiencies', color='#3498db', edgecolor='white')
+    bars_closed = ax.bar(x, combined_stats['closed_count'], 
+                         width, label='Closed/Repaired', color='#27ae60', edgecolor='white')
+    bars_open = ax.bar([i + width for i in x], combined_stats['open_count'], 
+                       width, label='Open', color='#e74c3c', edgecolor='white')
+    
+    ax.set_xlabel('Time Period', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Number of Deficiencies', fontsize=14, fontweight='bold')
+    ax.set_title(f'Deficiency Status Comparison\n(Week: {start_date} to {end_date})', 
+                 fontsize=16, fontweight='bold', color=NAVY_BLUE)
+    ax.set_xticks(x)
+    ax.set_xticklabels(periods, fontsize=12, fontweight='bold')
+    ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
+    
+    # Add value labels on bars
+    def add_labels(bars):
+        for bar in bars:
+            height = bar.get_height()
+            if height > 0:
+                ax.annotate(f'{int(height):,}', 
+                           xy=(bar.get_x() + bar.get_width()/2, height),
+                           xytext=(0, 3), textcoords="offset points", 
+                           ha='center', va='bottom', fontsize=10, fontweight='bold')
+    
+    add_labels(bars_total)
+    add_labels(bars_closed)
+    add_labels(bars_open)
+    
+    # Add grid for readability
+    ax.yaxis.grid(True, linestyle='--', alpha=0.7)
+    ax.set_axisbelow(True)
+    
+    # Style the spines
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"  Generated: {output_path}")
+
+
+def generate_repair_responsibility_chart(conn, start_date, end_date, output_path):
+    """Generate chart showing deficiencies by repair responsibility with status breakdown."""
+    # Get cumulative, 90-day, and weekly data by repair responsibility
+    day90_end = datetime.now().strftime('%Y-%m-%d')
+    day90_start = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    
+    query = """
+        SELECT 
+            CASE 
+                WHEN repair_by LIKE '%Task Force SAFE%' OR repair_by LIKE '%Task Force Safe%' THEN 'TF SAFE'
+                WHEN repair_by LIKE '%O&M%' OR repair_by LIKE '%O & M%' THEN 'O&M'
+                WHEN repair_by LIKE '%Military%' THEN 'Military'
+                ELSE 'Other'
+            END as responsibility,
+            COUNT(*) as total,
+            SUM(CASE WHEN deficiency_status = 'Open' OR deficiency_status LIKE '%ReInsp-Open%' OR deficiency_status LIKE '%Reinsp-Open%' THEN 1 ELSE 0 END) as open_count,
+            SUM(CASE WHEN deficiency_status LIKE '%Closed%' OR deficiency_status LIKE '%Repaired%' THEN 1 ELSE 0 END) as closed_count
+        FROM master_deficiencies
+        GROUP BY responsibility
+        HAVING responsibility != 'Other'
+        ORDER BY total DESC
+    """
+    cumulative_df = pd.read_sql_query(query, conn)
+    
+    if cumulative_df.empty:
+        print("  No repair responsibility data to chart")
+        return
+    
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+    fig.patch.set_facecolor('white')
+    
+    # Left chart: Stacked bar by responsibility (Cumulative)
+    ax1 = axes[0]
+    ax1.set_facecolor('white')
+    responsibilities = cumulative_df['responsibility'].tolist()
+    x = range(len(responsibilities))
+    
+    # Use total for bar height, with closed/open as stacked segments
+    # Calculate the "other" status count (total - open - closed)
+    cumulative_df['other_count'] = cumulative_df['total'] - cumulative_df['open_count'] - cumulative_df['closed_count']
+    
+    bars_closed = ax1.bar(x, cumulative_df['closed_count'], label='Closed/Repaired', color='#27ae60')
+    bars_open = ax1.bar(x, cumulative_df['open_count'], bottom=cumulative_df['closed_count'], 
+                        label='Open', color='#e74c3c')
+    # Add "other" statuses on top if any
+    bars_other = ax1.bar(x, cumulative_df['other_count'], 
+                         bottom=cumulative_df['closed_count'] + cumulative_df['open_count'],
+                         label='Other Status', color='#95a5a6')
+    
+    ax1.set_xlabel('Repair Responsibility', fontsize=12, fontweight='bold')
+    ax1.set_ylabel('Number of Deficiencies', fontsize=12, fontweight='bold')
+    ax1.set_title('Deficiencies by Repair Responsibility\n(Cumulative)', fontsize=14, fontweight='bold', 
+                  color=NAVY_BLUE, backgroundcolor='white', pad=20)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(responsibilities, fontsize=11, fontweight='bold')
+    ax1.legend(loc='upper right', fontsize=10)
+    ax1.yaxis.grid(True, linestyle='--', alpha=0.7)
+    ax1.set_axisbelow(True)
+    
+    # Add total labels on top of bars
+    for i, (idx, row) in enumerate(cumulative_df.iterrows()):
+        total = row['total']
+        ax1.annotate(f'{int(total):,}', xy=(i, total), xytext=(0, 5),
+                    textcoords="offset points", ha='center', va='bottom', 
+                    fontsize=11, fontweight='bold')
+    
+    # Right chart: Pie chart showing distribution
+    ax2 = axes[1]
+    ax2.set_facecolor('white')
+    colors = ['#3498db', '#e67e22', '#9b59b6']
+    wedges, texts, autotexts = ax2.pie(cumulative_df['total'], 
+                                        labels=responsibilities,
+                                        autopct=lambda pct: f'{pct:.1f}%\n({int(pct/100*cumulative_df["total"].sum()):,})',
+                                        colors=colors[:len(responsibilities)],
+                                        explode=[0.02] * len(responsibilities),
+                                        shadow=False,
+                                        startangle=90)
+    
+    ax2.set_title('Distribution by Responsibility\n(Cumulative)', fontsize=14, fontweight='bold', 
+                  color=NAVY_BLUE, backgroundcolor='white', pad=20)
+    
+    # Style the pie chart text
+    for text in texts:
+        text.set_fontsize(12)
+        text.set_fontweight('bold')
+    for autotext in autotexts:
+        autotext.set_fontsize(10)
+        autotext.set_fontweight('bold')
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"  Generated: {output_path}")
+
+
 def generate_weekly_report(start_date=None, end_date=None):
     """Generate all weekly report slides."""
     # Default to last week
@@ -399,6 +610,7 @@ def generate_weekly_report(start_date=None, end_date=None):
     cumulative_stats = get_cumulative_stats(conn)
     cumulative_by_country = get_cumulative_by_country(conn)
     stats_90_day = get_90_day_stats(conn)
+    combined_stats = get_combined_period_stats(conn, start_date, end_date)
     
     print(f"  Weekly records: {weekly_stats['total_deficiencies'].sum() if not weekly_stats.empty else 0}")
     print(f"  Countries with data: {len(weekly_stats)}")
@@ -434,6 +646,18 @@ def generate_weekly_report(start_date=None, end_date=None):
     generate_90_day_chart(
         stats_90_day,
         os.path.join(report_dir, '05_90_day_stats.png')
+    )
+    
+    # 6. NEW: Combined deficiency chart (Cumulative, 90-Day, Weekly on one chart)
+    generate_combined_deficiency_chart(
+        combined_stats, start_date, end_date,
+        os.path.join(report_dir, '06_combined_deficiency_comparison.png')
+    )
+    
+    # 7. NEW: Repair responsibility breakdown chart
+    generate_repair_responsibility_chart(
+        conn, start_date, end_date,
+        os.path.join(report_dir, '07_repair_responsibility.png')
     )
     
     conn.close()
