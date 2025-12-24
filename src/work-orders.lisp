@@ -23,7 +23,8 @@
                                task-order clin facility-id asset-id system-id
                                location-details code-basis deficiency-category
                                loto-required work-instructions target-start
-                               target-completion assigned-to planned-hours job-plan-id)
+                               target-completion assigned-to planned-hours job-plan-id
+                               team-number created-by-user-id)
   "Create a new work order with auto-generated WO number."
   (let ((wo-number (next-wo-number site-id)))
     (execute-sql 
@@ -31,12 +32,13 @@
       (wo_number, deficiency_id, inspection_report_no, bosi_ticket_no, task_order, clin,
        site_id, facility_id, asset_id, system_id, location_details, work_type, priority,
        code_basis, deficiency_category, loto_required, work_instructions, target_start,
-       target_completion, assigned_to, planned_hours, job_plan_id, status, progress_pct)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'New', 0)"
+       target_completion, assigned_to, planned_hours, job_plan_id, team_number, created_by_user_id, status, progress_pct)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'New', 0)"
      wo-number deficiency-id inspection-report-no bosi-ticket-no task-order clin
      site-id facility-id asset-id system-id location-details work-type priority
      code-basis deficiency-category (if loto-required 1 0) work-instructions 
-     target-start target-completion assigned-to planned-hours job-plan-id)
+     target-start target-completion assigned-to planned-hours job-plan-id
+     team-number created-by-user-id)
     (let ((wo-id (getf (fetch-one "SELECT last_insert_rowid() as id") :|id|)))
       ;; Log creation in history
       (execute-sql "INSERT INTO wo_history (wo_id, field_changed, new_value) VALUES (?, 'created', ?)"
@@ -115,8 +117,8 @@
                              (nreverse updates))))
             (apply #'execute-sql sql (append (nreverse params) (list id)))))))))
 
-(defun list-work-orders (&key site-id status priority date-from date-to limit offset)
-  "List work orders with optional filters including date range."
+(defun list-work-orders (&key site-id status priority date-from date-to team-number limit offset)
+  "List work orders with optional filters including date range and team number."
   (let ((conditions (list "1=1"))
         (params (list)))
     (when site-id
@@ -134,6 +136,9 @@
     (when (and date-to (> (length date-to) 0))
       (setf conditions (append conditions (list "date(wo.created_at) <= ?")))
       (setf params (append params (list date-to))))
+    (when team-number
+      (setf conditions (append conditions (list "(wo.team_number = ? OR wo.team_number = ?)")))
+      (setf params (append params (list team-number (format nil "Team ~A" team-number)))))
     
     (let* ((sql (format nil 
                 "SELECT wo.*, s.code as site_code, f.code as facility_code
@@ -224,37 +229,28 @@
 
 ;;; Search Functions
 
-(defun search-work-orders (search-term &key site-id limit)
-  "Search work orders by WO number or location details."
-  (let ((like-term (format nil "%~A%" search-term)))
-    (if site-id
-        (fetch-all 
-         (format nil
-          "SELECT wo.*, s.code as site_code, s.name as site_name, f.code as facility_code
-           FROM work_orders wo
-           JOIN sites s ON wo.site_id = s.id
-           LEFT JOIN facilities f ON wo.facility_id = f.id
-           WHERE wo.site_id = ?
-             AND (wo.wo_number LIKE ? 
-                  OR wo.location_details LIKE ?
-                  OR wo.work_type LIKE ?
-                  OR wo.assigned_to LIKE ?)
-           ORDER BY wo.created_at DESC
-           ~@[LIMIT ~A~]" limit)
-         site-id like-term like-term like-term like-term)
-        (fetch-all 
-         (format nil
-          "SELECT wo.*, s.code as site_code, s.name as site_name, f.code as facility_code
-           FROM work_orders wo
-           JOIN sites s ON wo.site_id = s.id
-           LEFT JOIN facilities f ON wo.facility_id = f.id
-           WHERE wo.wo_number LIKE ? 
-                 OR wo.location_details LIKE ?
-                 OR wo.work_type LIKE ?
-                 OR wo.assigned_to LIKE ?
-           ORDER BY wo.created_at DESC
-           ~@[LIMIT ~A~]" limit)
-         like-term like-term like-term like-term))))
+(defun search-work-orders (search-term &key site-id team-number limit)
+  "Search work orders by WO number or location details, with optional team filter."
+  (let ((like-term (format nil "%~A%" search-term))
+        (conditions (list "(wo.wo_number LIKE ? OR wo.location_details LIKE ? OR wo.work_type LIKE ? OR wo.assigned_to LIKE ?)"))
+        (params (list like-term like-term like-term like-term)))
+    (when site-id
+      (push "wo.site_id = ?" conditions)
+      (push site-id params))
+    (when team-number
+      (push "(wo.team_number = ? OR wo.team_number = ?)" conditions)
+      (push team-number params)
+      (push (format nil "Team ~A" team-number) params))
+    (apply #'fetch-all 
+           (format nil
+            "SELECT wo.*, s.code as site_code, s.name as site_name, f.code as facility_code
+             FROM work_orders wo
+             JOIN sites s ON wo.site_id = s.id
+             LEFT JOIN facilities f ON wo.facility_id = f.id
+             WHERE ~{~A~^ AND ~}
+             ORDER BY wo.created_at DESC
+             ~@[LIMIT ~A~]" (reverse conditions) limit)
+           (reverse params))))
 
 (defun search-wo-activities (search-term &key limit)
   "Search work order activities by WO number."

@@ -658,6 +658,8 @@
 (defun handle-inspection-reports-list ()
   "List all inspection reports with optional status filter."
   (let* ((user (get-current-user))
+         (is-admin (and user (eql 1 (getf user :|is_admin|))))
+         (user-team (when user (getf user :|team_number|)))
          (status-filter (get-param "status"))
          (show-assigned (and user (or (user-is-admin-p user)
                                       (string= (string-downcase (or (getf user :|role|) "")) "qc_manager"))))
@@ -665,15 +667,19 @@
                       FROM inspection_reports r
                       JOIN sites s ON r.site_id = s.id
                       LEFT JOIN users u ON r.assigned_qc_id = u.id")
+         ;; Non-admin users only see their team's reports (handle both "113" and "Team 113" formats)
+         (team-clause (if (and (not is-admin) user-team)
+                          (format nil " AND (r.team_number = '~A' OR r.team_number = 'Team ~A')" user-team user-team)
+                          ""))
          (reports (cond
                     ((and status-filter (string= status-filter "rejected"))
                      (fetch-all (concatenate 'string base-query 
-                                " WHERE r.rejection_count > 0 ORDER BY r.rejection_count DESC, r.created_at DESC LIMIT 100")))
+                                " WHERE r.rejection_count > 0" team-clause " ORDER BY r.rejection_count DESC, r.created_at DESC LIMIT 100")))
                     ((and status-filter (> (length status-filter) 0))
                      (fetch-all (concatenate 'string base-query 
-                                " WHERE r.status = ? ORDER BY r.created_at DESC LIMIT 100") status-filter))
+                                " WHERE r.status = ?" team-clause " ORDER BY r.created_at DESC LIMIT 100") status-filter))
                     (t (fetch-all (concatenate 'string base-query 
-                                  " ORDER BY r.created_at DESC LIMIT 100"))))))
+                                  " WHERE 1=1" team-clause " ORDER BY r.created_at DESC LIMIT 100"))))))
     (html-response
      (render-page "Inspection Reports"
        (cl-who:with-html-output-to-string (s)
@@ -735,7 +741,28 @@
   "New inspection report form."
   (let* ((wo-id (parse-int (get-param "wo_id")))
          (wo (when wo-id (get-work-order wo-id)))
-         (sites (list-sites)))
+         (sites (list-sites))
+         ;; Extract building info from work order location_details
+         ;; Format is typically "BuildingName (BuildingType)" or just "BuildingName"
+         (wo-location (when wo (getf wo :|location_details|)))
+         (wo-building-name (when wo-location
+                            (let ((paren-pos (position #\( wo-location)))
+                              (if paren-pos
+                                  (string-trim " " (subseq wo-location 0 paren-pos))
+                                  wo-location))))
+         (wo-building-type (when wo-location
+                            (let ((paren-pos (position #\( wo-location)))
+                              (when paren-pos
+                                (let ((end-pos (position #\) wo-location :start paren-pos)))
+                                  (when end-pos
+                                    (subseq wo-location (1+ paren-pos) end-pos)))))))
+         ;; Get team number from work order (strip "Team " prefix if present)
+         (wo-team (when wo 
+                    (let ((assigned (getf wo :|assigned_to|)))
+                      (if (and assigned (>= (length assigned) 5) 
+                               (string= "Team " (subseq assigned 0 5)))
+                          (subseq assigned 5)
+                          (or (getf wo :|team_number|) assigned))))))
     (html-response
      (render-page "New Inspection Report"
        (cl-who:with-html-output-to-string (s)
@@ -764,6 +791,7 @@
              (:div :class "form-group required"
                (:label "Building Number")
                (:input :type "text" :name "building_number" :required t
+                       :value (or wo-building-name "")
                        :placeholder "e.g., 11200, GEN-1")))
            (:div :class "form-row"
              (:div :class "form-group"
@@ -771,7 +799,8 @@
                (:select :name "building_type"
                  (:option :value "" "-- Select --")
                  (dolist (bt *building-types*)
-                   (cl-who:htm (:option :value bt (cl-who:str bt))))))
+                   (let ((selected (and wo-building-type (string= bt wo-building-type))))
+                     (cl-who:htm (:option :value bt :selected selected (cl-who:str bt)))))))
              (:div :class "form-group required"
                (:label "System Voltage")
                (:select :name "system_voltage" :id "voltage-select" :required t
@@ -789,7 +818,7 @@
                (:label "Team Number")
                (:input :type "text" :name "team_number" :required t
                        :placeholder "e.g., 102"
-                       :value (or (when wo (getf wo :|assigned_to|)) ""))))
+                       :value (or wo-team ""))))
            (:div :class "form-row"
              (:div :class "form-group required"
                (:label "Inspection Date")
@@ -1196,6 +1225,33 @@
         (redirect-to "/inspection-reports"))))
 
 
+(defun handle-deficiency-added (report-id-str)
+  "Deficiency added success page with options to add another or return."
+  (let* ((report-id (parse-int report-id-str))
+         (report (get-inspection-report report-id))
+         (deficiencies (get-report-deficiencies report-id))
+         (def-count (length deficiencies)))
+    (if report
+        (html-response
+         (render-page "Deficiency Added"
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "success-page" :style "text-align: center; padding: 2rem;"
+               (:div :class "success-icon" :style "font-size: 4rem; color: #28a745; margin-bottom: 1rem;"
+                 "✓")
+               (:h1 "Deficiency Added Successfully!")
+               (:p :style "font-size: 1.2rem; margin: 1rem 0;"
+                   (cl-who:fmt "Report: ~A" (getf report :|report_number|)))
+               (:p :style "color: #666; margin-bottom: 2rem;"
+                   (cl-who:fmt "Total deficiencies on this report: ~A" def-count))
+               (:div :class "action-buttons" :style "display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;"
+                 (:a :href (format nil "/inspection-reports/~A/deficiency/new" report-id) 
+                     :class "btn btn-primary" :style "padding: 1rem 2rem;"
+                     "+ Add Another Deficiency")
+                 (:a :href (format nil "/inspection-reports/~A" report-id) 
+                     :class "btn btn-secondary" :style "padding: 1rem 2rem;"
+                     "Done - Return to Report"))))))
+        (redirect-to "/inspection-reports"))))
+
 (defun handle-deficiency-new (report-id-str)
   "Add deficiency form."
   (let* ((report-id (parse-int report-id-str))
@@ -1583,7 +1639,8 @@
                     :code-reference code-reference
                     :deficiency-status deficiency-status
                     :image-path image-path)
-    (redirect-to (format nil "/inspection-reports/~A" report-id))))
+    ;; Redirect to success page with option to add another
+    (redirect-to (format nil "/inspection-reports/~A/deficiency/added" report-id))))
 
 
 (defun handle-api-deficiency-delete (deficiency-id-str)

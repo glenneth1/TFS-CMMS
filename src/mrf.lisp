@@ -107,8 +107,8 @@
     FROM material_requests mr 
     WHERE mr.inspection_report_id = ?" report-id))
 
-(defun get-all-mrfs (&key status limit offset)
-  "Get all MRFs with optional filters."
+(defun get-all-mrfs (&key status team-number limit offset)
+  "Get all MRFs with optional filters including team number."
   (let ((sql "SELECT mr.*, ir.report_number, ir.tag_id as report_tag_id,
                      (SELECT COUNT(*) FROM material_request_items WHERE mrf_id = mr.id) as item_count
               FROM material_requests mr
@@ -118,6 +118,10 @@
     (when status
       (push "mr.status = ?" conditions)
       (push status params))
+    (when team-number
+      (push "(mr.team_number = ? OR mr.team_number = ?)" conditions)
+      (push team-number params)
+      (push (format nil "Team ~A" team-number) params))
     (when conditions
       (setf sql (format nil "~A WHERE ~{~A~^ AND ~}" sql (reverse conditions))))
     (setf sql (format nil "~A ORDER BY mr.created_at DESC" sql))
@@ -222,9 +226,15 @@
 
 (defun handle-mrf-list ()
   "Handle MRF list page."
-  (let* ((status-param (hunchentoot:parameter "status"))
+  (let* ((user (get-current-user))
+         (is-admin (and user (eql 1 (getf user :|is_admin|))))
+         (user-team (when user (getf user :|team_number|)))
+         (status-param (hunchentoot:parameter "status"))
+         ;; Non-admin users only see their team's MRFs
+         (team-filter (unless is-admin user-team))
          (mrfs (get-all-mrfs :status (when (and status-param (not (string= status-param ""))) 
-                                       status-param))))
+                                       status-param)
+                             :team-number team-filter)))
     (html-response
      (render-page "Material Request Forms"
        (cl-who:with-html-output-to-string (s)

@@ -54,8 +54,9 @@
       (push "submitted_by = ?" conditions)
       (push user-id params))
     (when team-number
-      (push "team_number = ?" conditions)
-      (push team-number params))
+      (push "(d.team_number = ? OR d.team_number = ?)" conditions)
+      (push team-number params)
+      (push (format nil "Team ~A" team-number) params))
     (when date-from
       (push "report_date >= ?" conditions)
       (push date-from params))
@@ -132,8 +133,9 @@
       (push "submitted_by = ?" conditions)
       (push user-id params))
     (when team-number
-      (push "team_number = ?" conditions)
-      (push team-number params))
+      (push "(i.team_number = ? OR i.team_number = ?)" conditions)
+      (push team-number params)
+      (push (format nil "Team ~A" team-number) params))
     (when date-from
       (push "submission_date >= ?" conditions)
       (push date-from params))
@@ -194,6 +196,8 @@
   (let* ((user (get-current-user))
          (role (when user (string-downcase (or (getf user :|role|) ""))))
          (user-id (when user (getf user :|id|)))
+         (user-team (when user (getf user :|team_number|)))
+         (is-admin (and user (eql 1 (getf user :|is_admin|))))
          (team-filter (get-param "team"))
          (date-from (get-param "date_from"))
          (date-to (get-param "date_to"))
@@ -205,10 +209,12 @@
                                    (string= role "master_electrician")
                                    (string= role "journeyman")
                                    (string= role "inspector")))
-               (dars (if is-electrician
-                         (get-dar-list :user-id user-id :date-from date-from :date-to date-to)
-                         (get-dar-list :team-number (when (and team-filter (not (string= team-filter ""))) team-filter)
-                                       :date-from date-from :date-to date-to))))
+               ;; Non-admin electricians see only their team's DARs
+               (effective-team (if (and is-electrician (not is-admin))
+                                   user-team
+                                   (when (and team-filter (not (string= team-filter ""))) team-filter)))
+               (dars (get-dar-list :team-number effective-team
+                                   :date-from date-from :date-to date-to)))
           (html-response
            (render-page "Daily Activity Reports"
              (cl-who:with-html-output-to-string (s)
@@ -547,15 +553,19 @@ function addReportRow() {
   (let* ((user (get-current-user))
          (role (when user (string-downcase (or (getf user :|role|) ""))))
          (user-id (when user (getf user :|id|)))
+         (user-team (when user (getf user :|team_number|)))
+         (is-admin (and user (eql 1 (getf user :|is_admin|))))
          (team-filter (get-param "team")))
     (if user
         (let* ((is-electrician (or (string= role "electrician")
                                    (string= role "master_electrician")
                                    (string= role "journeyman")
                                    (string= role "inspector")))
-               (irps (if is-electrician
-                         (get-irp-list :user-id user-id)
-                         (get-irp-list :team-number (when (and team-filter (not (string= team-filter ""))) team-filter)))))
+               ;; Non-admin electricians see only their team's IRPs
+               (effective-team (if (and is-electrician (not is-admin))
+                                   user-team
+                                   (when (and team-filter (not (string= team-filter ""))) team-filter)))
+               (irps (get-irp-list :team-number effective-team)))
           (html-response
            (render-page "Immediate Repair Package (IRP)"
              (cl-who:with-html-output-to-string (s)

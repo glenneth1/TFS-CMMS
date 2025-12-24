@@ -477,23 +477,23 @@
                  ;; Inspector Dashboard
                  ((string= role "Inspector")
                   (let* ((user-name (getf user :|full_name|))
+                         (user-team (getf user :|team_number|))
                          (rejected-reports (fetch-all 
                                             "SELECT r.*, s.name as site_name 
                                              FROM inspection_reports r 
                                              JOIN sites s ON r.site_id = s.id 
                                              WHERE r.status = 'QC Rejected' 
-                                               AND (r.inspector1_name = ? OR r.inspector2_name = ?)
+                                               AND (r.team_number = ? OR r.team_number = ?)
                                              ORDER BY r.updated_at DESC"
-                                            user-name user-name))
+                                            user-team (format nil "Team ~A" user-team)))
                          (draft-reports (fetch-all 
                                          "SELECT r.*, s.name as site_name 
                                           FROM inspection_reports r 
                                           JOIN sites s ON r.site_id = s.id 
                                           WHERE r.status = 'Draft' 
-                                            AND (r.inspector1_name = ? OR r.inspector2_name = ? 
-                                                 OR r.inspector1_name IS NULL)
+                                            AND (r.team_number = ? OR r.team_number = ?)
                                           ORDER BY r.created_at DESC LIMIT 10"
-                                         user-name user-name)))
+                                         user-team (format nil "Team ~A" user-team))))
                     (cl-who:htm
                      (when rejected-reports
                        (cl-who:htm
@@ -537,10 +537,10 @@
                                         "SELECT r.*, s.name as site_name 
                                          FROM inspection_reports r 
                                          JOIN sites s ON r.site_id = s.id 
-                                         WHERE (r.inspector1_name = ? OR r.inspector2_name = ?)
+                                         WHERE (r.team_number = ? OR r.team_number = ?)
                                            AND r.status NOT IN ('Draft', 'QC Rejected')
                                          ORDER BY r.updated_at DESC LIMIT 10"
-                                        user-name user-name)))
+                                        user-team (format nil "Team ~A" user-team))))
                        (cl-who:htm
                         (:section :class "card"
                           (:h2 "My Submitted Reports")
@@ -625,7 +625,10 @@
 
 (defun handle-work-orders ()
   "Work orders list page."
-  (let* ((site-id (parse-int (get-param "site")))
+  (let* ((user (get-current-user))
+         (is-admin (and user (eql 1 (getf user :|is_admin|))))
+         (user-team (when user (getf user :|team_number|)))
+         (site-id (parse-int (get-param "site")))
          (status-param (get-param "status"))
          (status (when (and status-param (> (length status-param) 0)) status-param))
          (date-from (get-param "date_from"))
@@ -634,10 +637,13 @@
          (contract-week (get-param "contract_week"))
          (current-period (or (get-system-setting "contract_current_period") "BY"))
          (available-weeks (get-available-contract-weeks current-period))
+         ;; Non-admin users only see their team's work orders
+         (team-filter (unless is-admin user-team))
          (work-orders (if (and search-term (> (length search-term) 0))
-                          (search-work-orders search-term :site-id site-id :limit 200)
+                          (search-work-orders search-term :site-id site-id :team-number team-filter :limit 200)
                           (list-work-orders :site-id site-id :status status 
-                                            :date-from date-from :date-to date-to :limit 200)))
+                                            :date-from date-from :date-to date-to 
+                                            :team-number team-filter :limit 200)))
          (sites (list-sites)))
     (html-response
      (render-page "Work Orders"
@@ -725,6 +731,33 @@ function updateWoDatesFromWeek() {
                  (cl-who:htm
                   (:tr (:td :colspan "8" :class "empty-state" 
                             "No work orders found.")))))))))))
+
+(defun handle-work-order-created (id)
+  "Work order created success page with options to create another or return."
+  (let* ((wo-id (parse-int id))
+         (wo (get-work-order wo-id)))
+    (if wo
+        (html-response
+         (render-page "Work Order Created"
+           (cl-who:with-html-output-to-string (s)
+             (:div :class "success-page" :style "text-align: center; padding: 2rem;"
+               (:div :class "success-icon" :style "font-size: 4rem; color: #28a745; margin-bottom: 1rem;"
+                 "✓")
+               (:h1 "Work Order Created Successfully!")
+               (:p :class "wo-number" :style "font-size: 1.5rem; font-weight: bold; margin: 1rem 0;"
+                   (cl-who:fmt "WO Number: ~A" (getf wo :|wo_number|)))
+               (:p :style "color: #666; margin-bottom: 2rem;"
+                   (cl-who:fmt "Site: ~A | Building: ~A" 
+                               (or (getf wo :|site_name|) "-")
+                               (or (getf wo :|location_details|) "-")))
+               (:div :class "action-buttons" :style "display: flex; gap: 1rem; justify-content: center;"
+                 (:a :href "/work-orders/new" :class "btn btn-primary" :style "padding: 1rem 2rem;"
+                     "+ Create Another Work Order")
+                 (:a :href (format nil "/work-orders/~A" wo-id) :class "btn" :style "padding: 1rem 2rem;"
+                     "View This Work Order")
+                 (:a :href "/work-orders" :class "btn btn-secondary" :style "padding: 1rem 2rem;"
+                     "Return to Work Orders"))))))
+        (redirect-to "/work-orders"))))
 
 (defun handle-work-order-detail (id)
   "Work order detail page."
@@ -1251,19 +1284,26 @@ function updateDatesFromWeek() {
 
 (defun handle-api-work-orders-create ()
   "Create a new work order."
-  (let ((site-id (parse-int (get-param "site_id")))
-        (work-type (get-param "work_type"))
-        (priority (get-param "priority"))
-        (building-name (get-param "building_name"))
-        (building-type (get-param "building_type")))
+  (let* ((user (get-current-user))
+         (user-team (when user (getf user :|team_number|)))
+         (user-id (when user (getf user :|id|)))
+         (site-id (parse-int (get-param "site_id")))
+         (work-type (get-param "work_type"))
+         (priority (get-param "priority"))
+         (building-name (get-param "building_name"))
+         (building-type (get-param "building_type"))
+         (assigned-to (or (get-param "assigned_to")
+                          (when user-team (format nil "Team ~A" user-team)))))
     (if (and site-id work-type priority)
         (multiple-value-bind (wo-id wo-number)
             (create-work-order site-id work-type priority
                                :work-instructions (get-param "work_instructions")
                                :target-start (get-param "target_start")
-                               :assigned-to (get-param "assigned_to")
+                               :assigned-to assigned-to
+                               :team-number user-team
+                               :created-by-user-id user-id
                                :location-details (format nil "~@[~A~]~@[ (~A)~]" building-name building-type))
-          (redirect-to (format nil "/work-orders/~A" wo-id)))
+          (redirect-to (format nil "/work-orders/~A/created" wo-id)))
         (json-response (list :error "Site, work type, and priority are required")))))
 
 (defun handle-api-work-orders-update (id)
@@ -1412,6 +1452,10 @@ function updateDatesFromWeek() {
        (handle-work-orders))
       ((string= uri "/work-orders/new")
        (handle-work-order-new))
+      ((cl-ppcre:scan "^/work-orders/(\\d+)/created$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/work-orders/(\\d+)/created$" uri)
+         (declare (ignore match))
+         (handle-work-order-created (aref groups 0))))
       ((cl-ppcre:scan "^/work-orders/(\\d+)$" uri)
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/work-orders/(\\d+)$" uri)
          (declare (ignore match))
@@ -1495,6 +1539,10 @@ function updateDatesFromWeek() {
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/inspection-reports/(\\d+)$" uri)
          (declare (ignore match))
          (handle-inspection-report-detail (aref groups 0))))
+      ((cl-ppcre:scan "^/inspection-reports/(\\d+)/deficiency/added$" uri)
+       (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/inspection-reports/(\\d+)/deficiency/added$" uri)
+         (declare (ignore match))
+         (handle-deficiency-added (aref groups 0))))
       ((cl-ppcre:scan "^/inspection-reports/(\\d+)/deficiency/new$" uri)
        (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^/inspection-reports/(\\d+)/deficiency/new$" uri)
          (declare (ignore match))
