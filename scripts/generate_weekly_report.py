@@ -14,6 +14,16 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 import pandas as pd
 
+def format_date_display(date_str):
+    """Convert YYYY-MM-DD to DD-MMM-YYYY format (e.g., 22-DEC-2025)."""
+    if not date_str:
+        return date_str
+    try:
+        dt = datetime.strptime(date_str, '%Y-%m-%d')
+        return dt.strftime('%d-%b-%Y').upper()
+    except:
+        return date_str
+
 # Paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
@@ -89,6 +99,25 @@ def get_deficiency_types(conn, start_date, end_date):
         GROUP BY md.def_category
         ORDER BY count DESC
         LIMIT 10
+    """
+    df = pd.read_sql_query(query, conn, params=[start_date, end_date])
+    return df
+
+
+def get_deficiency_types_by_country(conn, start_date, end_date):
+    """Get deficiency types breakdown with top country for each type."""
+    query = """
+        SELECT 
+            md.def_category as category,
+            co.name as country,
+            COUNT(*) as count
+        FROM master_deficiencies md
+        JOIN camps ca ON md.camp_id = ca.id
+        JOIN countries co ON ca.country_id = co.id
+        WHERE md.inspection_date >= ? AND md.inspection_date <= ?
+            AND md.def_category IS NOT NULL AND md.def_category != ''
+        GROUP BY md.def_category, co.name
+        ORDER BY md.def_category, count DESC
     """
     df = pd.read_sql_query(query, conn, params=[start_date, end_date])
     return df
@@ -230,7 +259,7 @@ def generate_operational_updates_slide(weekly_stats, start_date, end_date, outpu
             color=NAVY_BLUE, ha='left', va='top')
     
     # Week info
-    ax.text(1, 8.5, f'REDi – Week ({start_date} – {end_date})', 
+    ax.text(1, 8.5, f'REDi – Week ({format_date_display(start_date)} – {format_date_display(end_date)})', 
             fontsize=18, fontweight='bold', color=NAVY_BLUE, ha='left', va='top')
     
     # Calculate totals
@@ -302,7 +331,7 @@ def generate_weekly_by_country_chart(weekly_stats, start_date, end_date, output_
     
     ax.set_xlabel('Country', fontsize=12)
     ax.set_ylabel('Count', fontsize=12)
-    ax.set_title(f'Weekly Inspection Summary ({start_date} to {end_date})', fontsize=14, fontweight='bold')
+    ax.set_title(f'Weekly Inspection Summary ({format_date_display(start_date)} to {format_date_display(end_date)})', fontsize=14, fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(weekly_stats['country'], rotation=45, ha='right')
     ax.legend()
@@ -323,31 +352,65 @@ def generate_weekly_by_country_chart(weekly_stats, start_date, end_date, output_
     print(f"  Generated: {output_path}")
 
 
-def generate_deficiency_types_chart(def_types, start_date, end_date, output_path):
-    """Generate pie chart of deficiency types."""
+def generate_deficiency_types_chart(def_types, start_date, end_date, output_path, def_types_by_country=None):
+    """Generate horizontal bar chart of deficiency types with country indicator."""
     if def_types.empty:
         print("  No deficiency type data to chart")
         return
     
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(14, 8))
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('white')
     
-    # Truncate long category names
-    def_types['category_short'] = def_types['category'].apply(
-        lambda x: x[:25] + '...' if len(str(x)) > 25 else x
+    # Get top country for each deficiency type
+    top_countries = {}
+    if def_types_by_country is not None and not def_types_by_country.empty:
+        for category in def_types['category'].unique():
+            cat_data = def_types_by_country[def_types_by_country['category'] == category]
+            if not cat_data.empty:
+                top_country = cat_data.iloc[0]['country']
+                top_count = cat_data.iloc[0]['count']
+                top_countries[category] = (top_country, top_count)
+    
+    # Truncate long category names and add country info
+    def_types = def_types.copy()
+    def_types['label'] = def_types.apply(
+        lambda row: f"{row['category'][:30]}{'...' if len(str(row['category'])) > 30 else ''}" + 
+                    (f" ({top_countries.get(row['category'], ('', 0))[0]})" 
+                     if row['category'] in top_countries else ""),
+        axis=1
     )
     
-    colors = sns.color_palette('husl', len(def_types))
-    wedges, texts, autotexts = ax.pie(def_types['count'], 
-                                       labels=def_types['category_short'],
-                                       autopct='%1.1f%%',
-                                       colors=colors,
-                                       pctdistance=0.75)
+    # Reverse order so largest is at top
+    def_types = def_types.iloc[::-1]
     
-    ax.set_title(f'Deficiency Types - Weekly ({start_date} to {end_date})', 
-                 fontsize=14, fontweight='bold')
+    # Create horizontal bar chart
+    colors = sns.color_palette('husl', len(def_types))
+    bars = ax.barh(range(len(def_types)), def_types['count'], color=colors[::-1])
+    
+    ax.set_yticks(range(len(def_types)))
+    ax.set_yticklabels(def_types['label'], fontsize=10)
+    ax.set_xlabel('Number of Deficiencies', fontsize=12, fontweight='bold')
+    ax.set_title(f'Top Deficiency Types by Category\n({format_date_display(start_date)} to {format_date_display(end_date)})', 
+                 fontsize=14, fontweight='bold', color=NAVY_BLUE, pad=15)
+    
+    # Add value labels on bars
+    for bar, count in zip(bars, def_types['count']):
+        width = bar.get_width()
+        ax.annotate(f'{int(count):,}', xy=(width, bar.get_y() + bar.get_height()/2),
+                   xytext=(5, 0), textcoords="offset points", 
+                   ha='left', va='center', fontsize=10, fontweight='bold')
+    
+    # Add grid
+    ax.xaxis.grid(True, linestyle='--', alpha=0.7)
+    ax.set_axisbelow(True)
+    
+    # Remove top and right spines
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
     
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
     print(f"  Generated: {output_path}")
 
@@ -455,7 +518,7 @@ def generate_combined_deficiency_chart(combined_stats, start_date, end_date, out
     
     ax.set_xlabel('Time Period', fontsize=14, fontweight='bold')
     ax.set_ylabel('Number of Deficiencies', fontsize=14, fontweight='bold')
-    ax.set_title(f'Deficiency Status Comparison\n(Week: {start_date} to {end_date})', 
+    ax.set_title(f'Deficiency Status Comparison\n(Week: {format_date_display(start_date)} to {format_date_display(end_date)})', 
                  fontsize=16, fontweight='bold', color=NAVY_BLUE)
     ax.set_xticks(x)
     ax.set_xticklabels(periods, fontsize=12, fontweight='bold')
@@ -607,6 +670,7 @@ def generate_weekly_report(start_date=None, end_date=None):
     print("Fetching data...")
     weekly_stats = get_weekly_stats(conn, start_date, end_date)
     def_types = get_deficiency_types(conn, start_date, end_date)
+    def_types_by_country = get_deficiency_types_by_country(conn, start_date, end_date)
     cumulative_stats = get_cumulative_stats(conn)
     cumulative_by_country = get_cumulative_by_country(conn)
     stats_90_day = get_90_day_stats(conn)
@@ -630,10 +694,11 @@ def generate_weekly_report(start_date=None, end_date=None):
         os.path.join(report_dir, '02_weekly_by_country.png')
     )
     
-    # 3. Deficiency types pie chart
+    # 3. Deficiency types chart with country breakdown
     generate_deficiency_types_chart(
         def_types, start_date, end_date,
-        os.path.join(report_dir, '03_deficiency_types.png')
+        os.path.join(report_dir, '03_deficiency_types.png'),
+        def_types_by_country=def_types_by_country
     )
     
     # 4. Cumulative stats
