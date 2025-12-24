@@ -424,7 +424,16 @@
                                 (dolist (rpt pending-reports)
                                   (cl-who:htm
                                    (:tr
-                                     (:td (cl-who:str (getf rpt :|report_number|)))
+                                     (:td (cl-who:str (getf rpt :|report_number|))
+                                          (when (> (or (getf rpt :|rejection_count|) 0) 0)
+                                            (cl-who:htm
+                                             (:span :class "badge badge-warning" 
+                                                    :style "margin-left:0.5rem"
+                                                    :title (or (getf rpt :|last_rejection_comments|) "No reason given")
+                                                    (cl-who:fmt "⚠ Resubmit #~A" (getf rpt :|rejection_count|)))
+                                             (:div :style "font-size:0.85em; color:#856404; margin-top:0.25rem;"
+                                                   (:em "Reason: ")
+                                                   (cl-who:str (or (getf rpt :|last_rejection_comments|) "No reason given"))))))
                                      (:td (cl-who:str (getf rpt :|site_name|)))
                                      (:td (cl-who:str (getf rpt :|building_number|)))
                                      (:td (cl-who:str (getf rpt :|inspector1_name|)))
