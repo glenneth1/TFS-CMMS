@@ -194,7 +194,7 @@
            wo.wo_number as work_order_number
     FROM inspection_reports r
     JOIN sites s ON r.site_id = s.id
-    JOIN work_orders wo ON r.wo_id = wo.id
+    LEFT JOIN work_orders wo ON r.wo_id = wo.id
     WHERE r.id = ?" 
    report-id))
 
@@ -563,7 +563,27 @@
      deficiency-category equipment-category (or imminent-danger "No") action-taken
      sor-issued-to description code-source code-reference (or deficiency-status "Open")
      image-path rac-score)
-    (getf (fetch-one "SELECT last_insert_rowid() as id") :|id|)))
+    (let ((def-id (getf (fetch-one "SELECT last_insert_rowid() as id") :|id|)))
+      ;; Update report number to reflect deficiency range
+      (update-report-deficiency-range report-id)
+      def-id)))
+
+(defun update-report-deficiency-range (report-id)
+  "Update the report number to reflect the current deficiency range."
+  (let* ((report (get-inspection-report report-id))
+         (deficiencies (fetch-all "SELECT deficiency_number FROM deficiencies WHERE report_id = ? ORDER BY deficiency_number" report-id))
+         (first-def (when deficiencies (getf (first deficiencies) :|deficiency_number|)))
+         (last-def (when deficiencies (getf (car (last deficiencies)) :|deficiency_number|)))
+         (site-code (getf report :|site_code|))
+         (building-number (getf report :|building_number|))
+         (team-number (getf report :|team_number|))
+         (inspection-date (getf report :|inspection_date|))
+         (inspection-phase (getf report :|inspection_phase|))
+         (date-formatted (format-date-for-report inspection-date))
+         (new-report-number (generate-report-number site-code building-number team-number 
+                                                     date-formatted first-def last-def inspection-phase)))
+    (execute-sql "UPDATE inspection_reports SET report_number = ? WHERE id = ?"
+                 new-report-number report-id)))
 
 (defun get-deficiency (deficiency-id)
   "Get a deficiency by ID."
@@ -635,8 +655,13 @@
              (append (reverse params) (list deficiency-id))))))
 
 (defun delete-deficiency (deficiency-id)
-  "Delete a deficiency."
-  (execute-sql "DELETE FROM deficiencies WHERE id = ?" deficiency-id))
+  "Delete a deficiency and update report number."
+  (let ((def (get-deficiency deficiency-id)))
+    (when def
+      (let ((report-id (getf def :|report_id|)))
+        (execute-sql "DELETE FROM deficiencies WHERE id = ?" deficiency-id)
+        ;; Update report number to reflect new deficiency range
+        (update-report-deficiency-range report-id)))))
 
 ;;; RAC Score Calculation
 

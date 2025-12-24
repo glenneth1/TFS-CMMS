@@ -35,8 +35,8 @@
   html)
 
 (defun redirect-to (url)
-  "Redirect to URL."
-  (hunchentoot:redirect url))
+  "Redirect to URL using 303 See Other for POST-Redirect-GET pattern."
+  (hunchentoot:redirect url :code 303))
 
 ;;; Simple HTML template rendering
 
