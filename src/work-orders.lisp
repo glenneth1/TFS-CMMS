@@ -231,9 +231,9 @@
 
 (defun search-work-orders (search-term &key site-id team-number limit)
   "Search work orders by WO number or location details, with optional team filter."
-  (let ((like-term (format nil "%~A%" search-term))
-        (conditions (list "(wo.wo_number LIKE ? OR wo.location_details LIKE ? OR wo.work_type LIKE ? OR wo.assigned_to LIKE ?)"))
-        (params (list like-term like-term like-term like-term)))
+  (let* ((like-term (format nil "%~A%" search-term))
+         (conditions (list "(wo.wo_number LIKE ? OR wo.location_details LIKE ? OR wo.work_type LIKE ? OR wo.assigned_to LIKE ?)"))
+         (params (list like-term like-term like-term like-term)))
     (when site-id
       (push "wo.site_id = ?" conditions)
       (push site-id params))
