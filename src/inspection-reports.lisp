@@ -125,6 +125,23 @@
         (when (probe-file pdf-path)
           pdf-filename)))))
 
+(defun handle-api-generate-pdf (report-id-str)
+  "API handler to generate and serve PDF for an inspection report."
+  (let* ((report-id (parse-integer report-id-str :junk-allowed t))
+         (pdf-filename (generate-report-pdf report-id)))
+    (if pdf-filename
+        (let ((pdf-path (merge-pathnames pdf-filename *reports-directory*)))
+          (setf (hunchentoot:content-type*) "application/pdf")
+          (setf (hunchentoot:header-out :content-disposition)
+                (format nil "inline; filename=\"~A\"" pdf-filename))
+          (with-open-file (in pdf-path :element-type '(unsigned-byte 8))
+            (let ((buffer (make-array (file-length in) :element-type '(unsigned-byte 8))))
+              (read-sequence buffer in)
+              buffer)))
+        (progn
+          (setf (hunchentoot:return-code*) hunchentoot:+http-internal-server-error+)
+          "Error generating PDF"))))
+
 ;;; Report Number and TAG-ID Generation
 
 (defun generate-report-number (site-code building-number team-number date-str first-def last-def inspection-phase)
