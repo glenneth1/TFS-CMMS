@@ -469,20 +469,23 @@
          (new-report-number (generate-report-number site-code building-number team-number
                                                      date-formatted first-def last-def 
                                                      inspection-phase)))
-    ;; Generate new tag_id with deficiency range
-    (let ((def-range (if (and first-def last-def) (format nil "~A-~A" first-def last-def) "0")))
+    ;; Generate new tag_id with deficiency range and reinspection suffix if applicable
+    (let* ((def-range (if (and first-def last-def) (format nil "~A-~A" first-def last-def) "0"))
+           (reinspection-num (getf report :|reinspection_number|))
+           (base-tag (format nil "TFSAFE_~A_~A_~A_~A_~A" site-code building-number team-number date-formatted def-range))
+           (final-tag (if reinspection-num (format nil "~A_~A" base-tag reinspection-num) base-tag))
+           (final-report (if reinspection-num (format nil "~A_~A" new-report-number reinspection-num) new-report-number)))
       (execute-sql 
        "UPDATE inspection_reports 
         SET status = 'Complete', report_number = ?, 
             tag_id = ?, updated_at = datetime('now')
         WHERE id = ?"
-       new-report-number 
-       (format nil "TFSAFE_~A_~A_~A_~A_~A" site-code building-number team-number date-formatted def-range)
-       report-id))))
+       final-report final-tag report-id))))
 
 (defun create-reinspection-report (original-report-id &key team-number inspection-date)
   "Create a re-inspection report by cloning an existing completed report.
    Copies all deficiencies with their current status (Open).
+   Appends _1, _2, etc. for each re-inspection of the same building.
    Returns the new report ID."
   (let* ((original (get-inspection-report original-report-id))
          (original-deficiencies (get-report-deficiencies original-report-id))
@@ -490,25 +493,31 @@
          (new-date (or inspection-date (getf original :|inspection_date|)))
          (site-code (getf original :|site_code|))
          (building-number (getf original :|building_number|))
+         (site-id (getf original :|site_id|))
          (date-formatted (format-date-for-report new-date))
-         ;; Find unique report number by checking for existing ones
-         (base-report-number (format nil "Re-Inspection-Report_TFSAFE_~A_~A_~A_~A" 
-                                     site-code building-number new-team date-formatted))
-         (existing-count (getf (fetch-one 
-                                "SELECT COUNT(*) as cnt FROM inspection_reports WHERE report_number LIKE ?"
-                                (concatenate 'string base-report-number "%"))
-                               :|cnt|))
-         (report-number (format nil "~A_0-~A" base-report-number (1+ existing-count))))
+         ;; Count existing re-inspections for this building to determine suffix
+         (existing-reinspections (getf (fetch-one 
+                                        "SELECT COUNT(*) as cnt FROM inspection_reports 
+                                         WHERE site_id = ? AND building_number = ? 
+                                         AND inspection_phase = 'Re Inspection'"
+                                        site-id building-number)
+                                       :|cnt|))
+         (reinspection-number (1+ existing-reinspections))
+         ;; Initial report/tag (will be updated on finalize with actual deficiency range)
+         (report-number (format nil "Re-Inspection-Report_TFSAFE_~A_~A_~A_~A_0_~A" 
+                                site-code building-number new-team date-formatted reinspection-number))
+         (tag-id (format nil "TFSAFE_~A_~A_~A_~A_0_~A" 
+                         site-code building-number new-team date-formatted reinspection-number)))
     ;; Create the new report
     (execute-sql 
      "INSERT INTO inspection_reports 
       (wo_id, tag_id, site_id, building_number, building_type, system_voltage,
        inspection_phase, previous_report_id, location_description, building_image_path,
-       team_number, inspection_date, status, report_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+       team_number, inspection_date, status, report_number, reinspection_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
      (getf original :|wo_id|)
-     "TFSAFE"
-     (getf original :|site_id|)
+     tag-id
+     site-id
      building-number
      (getf original :|building_type|)
      (getf original :|system_voltage|)
@@ -519,7 +528,8 @@
      new-team
      new-date
      "Draft"
-     report-number)
+     report-number
+     reinspection-number)
     ;; Get the new report ID
     (let ((new-report-id (getf (fetch-one "SELECT last_insert_rowid() as id") :|id|)))
       ;; Copy all deficiencies from original report
@@ -1116,8 +1126,8 @@
                              (cl-who:htm
                               (:a :href (format nil "/mrf/~A" (getf mrf :|id|))
                                   :class "btn btn-primary" "Edit MRF Items")))
-                           (:a :href (format nil "/mrf/~A/print" (getf mrf :|id|))
-                               :class "btn" :target "_blank" "Print MRF")))
+                           (:a :href (format nil "/mrf/~A/pdf" (getf mrf :|id|))
+                               :class "btn" :target "_blank" "Download MRF PDF")))
                         (cl-who:htm
                          (:p :class "text-muted" "MRF not yet generated.")
                          (when (member (getf report :|status|) '("Draft" "QC Rejected") :test #'string=)

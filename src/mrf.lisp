@@ -71,7 +71,11 @@
          (base (or (getf report :|site_name|) ""))
          (building (or (getf report :|building_number|) ""))
          (team-number (or (getf report :|team_number|) ""))
-         (inspector (or (getf report :|inspector1_name|) ""))
+         ;; Use inspector1_name from report, or fall back to logged-in user's name
+         (current-user (get-current-user))
+         (inspector (or (getf report :|inspector1_name|) 
+                        (when current-user (getf current-user :|name|))
+                        ""))
          (contract-number (or (get-system-setting "contract_number") "W912DY24R0043"))
          (today (format-date-iso (get-universal-time)))
          (mrf-number (generate-mrf-number base building today)))
@@ -189,6 +193,89 @@
       "UPDATE material_requests SET status = ?, updated_at = datetime('now') WHERE id = ?"
       new-status mrf-id))))
 
+;;; ============================================================
+;;; MRF PDF Generation
+;;; ============================================================
+
+(defvar *mrf-pdf-script-path*
+  (merge-pathnames "scripts/generate_mrf_pdf.py" (get-app-directory))
+  "Path to MRF PDF generation script.")
+
+(defvar *mrf-reports-directory*
+  (merge-pathnames "reports/mrf/" (get-app-directory))
+  "Directory for generated MRF PDF reports.")
+
+(defun generate-mrf-pdf (mrf-id)
+  "Generate a PDF for the given MRF. Returns the PDF filename or NIL on error."
+  (let* ((mrf (get-mrf mrf-id))
+         (items (get-mrf-items mrf-id))
+         (mrf-number (getf mrf :|mrf_number|))
+         (pdf-filename (format nil "~A.pdf" (sanitize-filename mrf-number)))
+         (pdf-path (merge-pathnames pdf-filename *mrf-reports-directory*))
+         (json-path (merge-pathnames (format nil "temp-mrf-~A.json" mrf-id) *mrf-reports-directory*)))
+    ;; Ensure reports directory exists
+    (ensure-directories-exist *mrf-reports-directory*)
+    ;; Create JSON data file
+    (let ((json-data (list 
+                      (cons "mrf" 
+                            (list (cons "mrf_number" (or (getf mrf :|mrf_number|) ""))
+                                  (cons "request_date" (or (getf mrf :|request_date|) ""))
+                                  (cons "team_number" (or (getf mrf :|team_number|) ""))
+                                  (cons "contract_number" (or (getf mrf :|contract_number|) ""))
+                                  (cons "site_support_location" (or (getf mrf :|site_support_location|) ""))
+                                  (cons "base" (or (getf mrf :|base|) ""))
+                                  (cons "camp_name" (or (getf mrf :|camp_name|) "N/A"))
+                                  (cons "status" (or (getf mrf :|status|) ""))
+                                  (cons "building_number" (or (getf mrf :|building_number|) ""))
+                                  (cons "requestor_name" (or (getf mrf :|requestor_name|) ""))))
+                      (cons "items"
+                            (mapcar (lambda (item)
+                                      (list (cons "part_number" (or (getf item :|part_number|) ""))
+                                            (cons "nomenclature" (or (getf item :|description|) 
+                                                                     (getf item :|inv_description|) ""))
+                                            (cons "quantity" (or (getf item :|quantity_requested|) 0))
+                                            (cons "uom" (or (getf item :|uom|) (getf item :|inv_uom|) ""))
+                                            (cons "is_material" (= 1 (or (getf item :|is_material|) 0)))
+                                            (cons "is_tool" (= 1 (or (getf item :|is_tool|) 0)))
+                                            (cons "notes" (or (getf item :|remarks|) ""))))
+                                    items)))))
+      ;; Write JSON file
+      (with-open-file (out json-path :direction :output :if-exists :supersede)
+        (write-string (cl-json:encode-json-to-string json-data) out))
+      ;; Run Python script
+      (uiop:run-program 
+       (list (namestring *python-path*)
+             (namestring *mrf-pdf-script-path*)
+             (namestring json-path)
+             (namestring pdf-path)
+             (namestring *static-directory*))
+       :output :string
+       :error-output :string
+       :ignore-error-status t)
+      ;; Clean up temp JSON file
+      (when (probe-file json-path)
+        (delete-file json-path))
+      ;; Return PDF filename if it was created
+      (when (probe-file pdf-path)
+        pdf-filename))))
+
+(defun handle-mrf-pdf (id-str)
+  "Generate and serve PDF for an MRF."
+  (let* ((mrf-id (parse-integer id-str :junk-allowed t))
+         (pdf-filename (generate-mrf-pdf mrf-id)))
+    (if pdf-filename
+        (let ((pdf-path (merge-pathnames pdf-filename *mrf-reports-directory*)))
+          (setf (hunchentoot:content-type*) "application/pdf")
+          (setf (hunchentoot:header-out :content-disposition)
+                (format nil "inline; filename=\"~A\"" pdf-filename))
+          (with-open-file (in pdf-path :element-type '(unsigned-byte 8))
+            (let ((buffer (make-array (file-length in) :element-type '(unsigned-byte 8))))
+              (read-sequence buffer in)
+              buffer)))
+        (progn
+          (setf (hunchentoot:return-code*) hunchentoot:+http-internal-server-error+)
+          "Error generating MRF PDF"))))
+
 (defun deduct-inventory-for-mrf (mrf-id)
   "Deduct inventory quantities for all items in an approved MRF that are linked to inventory."
   (let ((items (fetch-all 
@@ -288,7 +375,7 @@
                                     (cl-who:str (getf mrf :|status|))))
                         (:td 
                           (:a :href (format nil "/mrf/~A" (getf mrf :|id|)) :class "btn btn-sm" "View")
-                          (:a :href (format nil "/mrf/~A/print" (getf mrf :|id|)) :class "btn btn-sm btn-secondary" "Print")))))
+                          (:a :href (format nil "/mrf/~A/pdf" (getf mrf :|id|)) :class "btn btn-sm btn-secondary" "PDF")))))
                    (cl-who:htm
                     (:tr (:td :colspan "8" :class "text-center" "No MRFs found"))))))))))))
 
@@ -314,6 +401,7 @@
                                                (t "secondary")))
                           (cl-who:str (getf mrf :|status|)))
                    (:a :href "/mrf" :class "btn btn-secondary btn-sm" "Back to List")
+                   (:a :href (format nil "/mrf/~A/pdf" id) :class "btn btn-sm btn-primary" "Download PDF")
                    (:a :href (format nil "/mrf/~A/print" id) :class "btn btn-sm" "Print"))))
              
              ;; MRF Header Info
@@ -570,12 +658,19 @@ document.addEventListener('click', function(e) {
   body { margin: 0; padding: 20px; }
   .no-print { display: none; }
 }
+@page {
+  margin: 0.5in;
+  size: auto;
+}
+@page :first { margin-top: 0.5in; }
+@page { @top-left { content: none; } @top-right { content: none; } @bottom-left { content: none; } @bottom-right { content: none; } }
 body { font-family: Arial, sans-serif; font-size: 11pt; max-width: 800px; margin: 0 auto; padding: 20px; }
-.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-.logo { height: 60px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #1a365d; padding-bottom: 10px; }
+.logo { height: 50px; }
 .title { text-align: center; flex: 1; }
-.title h1 { margin: 0; font-size: 16pt; }
-.title h2 { margin: 5px 0 0 0; font-size: 12pt; font-weight: normal; }
+.title p.subtitle { font-size: 9pt; margin: 0; color: #666; }
+.title h1 { margin: 5px 0; font-size: 14pt; }
+.title p.tagline { margin: 0; font-size: 10pt; }
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
 .info-row { display: flex; }
 .info-label { font-weight: bold; min-width: 120px; }
@@ -591,27 +686,32 @@ th { background: #f0f0f0; font-weight: bold; }
                  (:a :href (format nil "/mrf/~A" id) :style "margin-left: 10px;" "Back to MRF"))
                
                (:div :class "header"
-                 (:img :src "/static/img/TFS_Logo.png" :class "logo" :alt "TFS Logo")
+                 (:img :src "/static/img/company_logo.png" :class "logo" :alt "Versar Global Solutions")
                  (:div :class "title"
+                   (:p :class "subtitle" "TF SAFE CMMS - Report")
                    (:h1 "Materials / Tools Request")
-                   (:h2 :class "mrf-number" (cl-who:str (getf mrf :|mrf_number|))))
-                 (:div :style "text-align: right;"
-                   (:div (:strong "Date: ") (cl-who:str (format-date-display (getf mrf :|request_date|))))
-                   (:div (:strong "Contract: ") (cl-who:str (or (getf mrf :|contract_number|) "")))))
+                   (:p :class "tagline" "Task Force SAFE - CENTCOM AOR"))
+                 (:img :src "/static/img/TFS_Logo.png" :class "logo" :alt "Task Force SAFE"))
                
                (:div :class "info-grid"
                  (:div :class "info-row"
+                   (:span :class "info-label" "MRF Number:")
+                   (:span :class "mrf-number" (cl-who:str (getf mrf :|mrf_number|))))
+                 (:div :class "info-row"
+                   (:span :class "info-label" "Date:")
+                   (:span (cl-who:str (format-date-display (getf mrf :|request_date|)))))
+                 (:div :class "info-row"
                    (:span :class "info-label" "Team Number:")
                    (:span (cl-who:str (or (getf mrf :|team_number|) ""))))
+                 (:div :class "info-row"
+                   (:span :class "info-label" "Contract:")
+                   (:span (cl-who:str (or (getf mrf :|contract_number|) ""))))
                  (:div :class "info-row"
                    (:span :class "info-label" "Site Support:")
                    (:span (cl-who:str (or (getf mrf :|site_support_location|) ""))))
                  (:div :class "info-row"
                    (:span :class "info-label" "Base:")
                    (:span (cl-who:str (or (getf mrf :|base|) ""))))
-                 (:div :class "info-row"
-                   (:span :class "info-label" "Tag ID:")
-                   (:span (cl-who:str (getf mrf :|mrf_number|))))
                  (:div :class "info-row"
                    (:span :class "info-label" "Camp Name:")
                    (:span (cl-who:str (or (getf mrf :|camp_name|) "N/A"))))
