@@ -145,6 +145,16 @@
 
 ;;; Authorization Helpers
 
+(defun user-is-read-only-p (user)
+  "Check if user has a read-only role (can view but not edit/create).
+   Program Manager can view reports and download PDFs but cannot modify data."
+  (when user
+    (string-equal (getf user :|role|) "program_manager")))
+
+(defun user-can-edit-p (user)
+  "Check if user can create/edit records. Returns NIL for read-only roles."
+  (and user (not (user-is-read-only-p user))))
+
 (defun user-can-qc-report-p (user report)
   "Check if user can QC a report (must be QC/Admin and not the inspector)."
   (let ((role (getf user :|role|))

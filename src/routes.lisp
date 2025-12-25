@@ -734,6 +734,7 @@
   "Work orders list page."
   (let* ((user (get-current-user))
          (is-admin (and user (eql 1 (getf user :|is_admin|))))
+         (is-read-only (user-is-read-only-p user))
          (user-team (when user (getf user :|team_number|)))
          (site-id (parse-int (get-param "site")))
          (status-param (get-param "status"))
@@ -757,7 +758,8 @@
        (cl-who:with-html-output-to-string (s)
          (:div :class "page-header"
            (:h1 "Work Orders")
-           (:a :href "/work-orders/new" :class "btn btn-primary" "+ New Work Order"))
+           (unless is-read-only
+             (cl-who:htm (:a :href "/work-orders/new" :class "btn btn-primary" "+ New Work Order"))))
          (:div :class "filters"
            (:form :method "get" :action "/work-orders" :class "filter-form"
              (:label "Search:"
@@ -1004,6 +1006,10 @@ function updateWoDatesFromWeek() {
 
 (defun handle-work-order-new ()
   "New work order form."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-work-order-new (redirect-to "/unauthorized"))))
   (let ((sites (list-sites)))
     (html-response
      (render-page "New Work Order"
@@ -1396,6 +1402,10 @@ function updateDatesFromWeek() {
 
 (defun handle-api-work-orders-create ()
   "Create a new work order."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-work-orders-create (redirect-to "/unauthorized"))))
   (let* ((user (get-current-user))
          (user-team (when user (getf user :|team_number|)))
          (user-id (when user (getf user :|id|)))
@@ -1420,6 +1430,10 @@ function updateDatesFromWeek() {
 
 (defun handle-api-work-orders-update (id)
   "Update a work order status."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-work-orders-update (redirect-to "/unauthorized"))))
   (let ((wo-id (parse-int id))
         (status (get-param "status"))
         (notes (get-param "notes")))
@@ -1429,6 +1443,10 @@ function updateDatesFromWeek() {
 
 (defun handle-api-work-orders-activity (id)
   "Add an activity to a work order."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-work-orders-activity (redirect-to "/unauthorized"))))
   (let ((wo-id (parse-int id))
         (activity-type (get-param "activity_type"))
         (activity-date (get-param "activity_date"))

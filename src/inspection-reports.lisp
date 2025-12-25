@@ -796,6 +796,10 @@
 
 (defun handle-inspection-report-new ()
   "New inspection report form."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-inspection-report-new (redirect-to "/unauthorized"))))
   (let* ((wo-id (parse-int (get-param "wo_id")))
          (wo (when wo-id (get-work-order wo-id)))
          (sites (list-sites))
@@ -1496,6 +1500,10 @@
 
 (defun handle-api-inspection-report-create ()
   "Create a new inspection report."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-inspection-report-create (redirect-to "/unauthorized"))))
   (let ((wo-id (parse-int (get-param "wo_id")))
         (site-id (parse-int (get-param "site_id")))
         (building-number (get-param "building_number"))
@@ -1514,6 +1522,10 @@
 
 (defun handle-api-inspection-report-update (id)
   "Update an inspection report."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-inspection-report-update (redirect-to "/unauthorized"))))
   (let ((report-id (parse-int id))
         (inspection-date (get-param "inspection_date"))
         (team-number (get-param "team_number"))
@@ -1542,6 +1554,10 @@
 
 (defun handle-api-inspection-report-building-image (id)
   "Upload building image for a report."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-inspection-report-building-image (redirect-to "/unauthorized"))))
   (let* ((report-id (parse-int id))
          (image-post-param (hunchentoot:post-parameter "building_image"))
          (image-path (when image-post-param
@@ -1555,6 +1571,10 @@
 
 (defun handle-api-inspection-report-submit (id)
   "Submit report and linked MRF for QC review."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-inspection-report-submit (redirect-to "/unauthorized"))))
   (let* ((report-id (parse-int id))
          (user (get-current-user))
          (user-id (getf user :|id|))
@@ -1601,6 +1621,10 @@
 
 (defun handle-api-create-reinspection (original-id-str)
   "Create a re-inspection report from a completed initial inspection."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-create-reinspection (redirect-to "/unauthorized"))))
   (let* ((original-id (parse-int original-id-str))
          (team-number (get-param "team_number"))
          (inspection-date (get-param "inspection_date"))
@@ -1666,6 +1690,10 @@
 
 (defun handle-api-deficiency-create (report-id-str)
   "Add a deficiency to a report."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-deficiency-create (redirect-to "/unauthorized"))))
   (let* ((report-id (parse-int report-id-str))
          (location-description (get-param "location_description"))
          (num-occurrences (parse-int (get-param "num_occurrences")))
@@ -1702,6 +1730,10 @@
 
 (defun handle-api-deficiency-delete (deficiency-id-str)
   "Delete a deficiency."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-deficiency-delete (redirect-to "/unauthorized"))))
   (let ((deficiency-id (parse-int deficiency-id-str))
         (report-id (get-param "report_id")))
     (delete-deficiency deficiency-id)
@@ -1710,6 +1742,10 @@
 
 (defun handle-api-deficiency-update (deficiency-id-str)
   "Update a deficiency."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-deficiency-update (redirect-to "/unauthorized"))))
   (let* ((deficiency-id (parse-int deficiency-id-str))
          (report-id (get-param "report_id"))
          (location-description (get-param "location_description"))

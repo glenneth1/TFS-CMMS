@@ -315,19 +315,21 @@
   "Handle MRF list page."
   (let* ((user (get-current-user))
          (is-admin (and user (eql 1 (getf user :|is_admin|))))
+         (is-read-only (user-is-read-only-p user))
          (user-team (when user (getf user :|team_number|)))
          (status-param (hunchentoot:parameter "status"))
          ;; Non-admin users only see their team's MRFs
          (team-filter (unless is-admin user-team))
          (mrfs (get-all-mrfs :status (when (and status-param (not (string= status-param ""))) 
-                                       status-param)
-                             :team-number team-filter)))
+                                      status-param)
+                            :team-number team-filter)))
     (html-response
      (render-page "Material Request Forms"
        (cl-who:with-html-output-to-string (s)
          (:div :style "display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"
            (:h1 :style "margin: 0;" "Material Request Forms")
-           (:a :href "/mrf/new" :class "btn btn-primary" "New MRF"))
+           (unless is-read-only
+             (cl-who:htm (:a :href "/mrf/new" :class "btn btn-primary" "New MRF"))))
          
          ;; Filter by status
          (:div :class "card" :style "padding: 0.75rem; margin-bottom: 1rem;"
@@ -607,6 +609,10 @@ document.addEventListener('click', function(e) {
 
 (defun handle-mrf-new ()
   "Handle new MRF creation page."
+  (let ((user (get-current-user)))
+    ;; Block read-only users (Program Manager)
+    (when (user-is-read-only-p user)
+      (return-from handle-mrf-new (redirect-to "/unauthorized"))))
   (let ((sites (fetch-all "SELECT id, code, name FROM sites ORDER BY name")))
     (html-response
      (render-page "New Material Request Form"
@@ -787,6 +793,10 @@ th { background: #f0f0f0; font-weight: bold; }
 
 (defun handle-api-mrf-create ()
   "Handle MRF creation API."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-mrf-create (redirect-to "/unauthorized"))))
   (let* ((base (hunchentoot:parameter "base"))
          (building (hunchentoot:parameter "building_number"))
          (camp-name (hunchentoot:parameter "camp_name"))
@@ -806,6 +816,10 @@ th { background: #f0f0f0; font-weight: bold; }
 
 (defun handle-api-mrf-add-item (mrf-id-str)
   "Handle adding item to MRF."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-mrf-add-item (redirect-to "/unauthorized"))))
   (let* ((mrf-id (parse-integer mrf-id-str :junk-allowed t))
          (item-id-str (hunchentoot:parameter "item_id"))
          (item-id (when (and item-id-str (not (string= item-id-str "")))
@@ -832,6 +846,10 @@ th { background: #f0f0f0; font-weight: bold; }
 
 (defun handle-api-mrf-delete-item (mrf-id-str item-id-str)
   "Handle deleting item from MRF."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-mrf-delete-item (redirect-to "/unauthorized"))))
   (let ((item-id (parse-integer item-id-str :junk-allowed t)))
     (when item-id
       (delete-mrf-item item-id)))
@@ -839,6 +857,10 @@ th { background: #f0f0f0; font-weight: bold; }
 
 (defun handle-api-mrf-submit (mrf-id-str)
   "Handle MRF submission."
+  ;; Block read-only users (Program Manager)
+  (let ((user (get-current-user)))
+    (when (user-is-read-only-p user)
+      (return-from handle-api-mrf-submit (redirect-to "/unauthorized"))))
   (let ((mrf-id (parse-integer mrf-id-str :junk-allowed t)))
     (when mrf-id
       (update-mrf-status mrf-id "Submitted")))

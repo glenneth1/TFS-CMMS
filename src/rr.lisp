@@ -441,14 +441,12 @@ function loadLeaveCalendar(monthStr) {
                 (:p :class "text-muted" "No previous R&R requests."))))))))))
 
 (defun handle-rr-approval-queue ()
-  "R&R approval queue for AO Lead / Program Manager."
+  "R&R approval queue for AO Lead only (Program Manager is read-only)."
   (let* ((user (get-current-user))
          (user-role (getf user :|role|))
          (can-approve-electricians (or (string= user-role "ao_lead") 
-                                       (string= user-role "Admin")
-                                       (string= user-role "program_manager")))
-         (can-approve-pmo-qc (or (string= user-role "program_manager")
-                                 (string= user-role "Admin")))
+                                       (string= user-role "Admin")))
+         (can-approve-pmo-qc (string= user-role "Admin"))
          (electrician-requests (when can-approve-electricians
                                  (get-pending-rr-requests :category "Electrician")))
          (pmo-requests (when can-approve-pmo-qc
@@ -950,13 +948,10 @@ th { background: #f0f0f0; font-weight: bold; }
          (category (getf request :|staff_category|))
          (user-role (getf user :|role|)))
     
-    ;; Check authorization
+    ;; Check authorization (Program Manager is read-only, cannot approve)
     (let ((can-approve (or (string= user-role "Admin")
                            (and (string= category "Electrician")
-                                (or (string= user-role "ao_lead")
-                                    (string= user-role "program_manager")))
-                           (and (member category '("PMO" "QC") :test #'string=)
-                                (string= user-role "program_manager")))))
+                                (string= user-role "ao_lead")))))
       (if can-approve
           (progn
             (approve-rr-request request-id user-id nil)
@@ -973,13 +968,10 @@ th { background: #f0f0f0; font-weight: bold; }
          (user-role (getf user :|role|))
          (comments (hunchentoot:parameter "comments")))
     
-    ;; Check authorization
+    ;; Check authorization (Program Manager is read-only, cannot reject)
     (let ((can-reject (or (string= user-role "Admin")
                           (and (string= category "Electrician")
-                               (or (string= user-role "ao_lead")
-                                   (string= user-role "program_manager")))
-                          (and (member category '("PMO" "QC") :test #'string=)
-                               (string= user-role "program_manager")))))
+                               (string= user-role "ao_lead")))))
       (if can-reject
           (progn
             (reject-rr-request request-id user-id comments)
@@ -1031,10 +1023,10 @@ th { background: #f0f0f0; font-weight: bold; }
   (let* ((user (get-current-user))
          (user-role (getf user :|role|))
          (is-admin (or (user-is-admin-p user)
-                       (string= user-role "ao_lead")
-                       (string= user-role "program_manager")))
+                       (string= user-role "ao_lead")))
          (request-id (parse-integer id-str :junk-allowed t))
          (rr (when request-id (get-rr-request request-id))))
+    ;; Program Manager is read-only, cannot edit R&R requests
     (if (and is-admin rr)
         (html-response
          (render-page "Edit R&R Request"
@@ -1076,13 +1068,12 @@ th { background: #f0f0f0; font-weight: bold; }
         (redirect-to "/unauthorized"))))
 
 (defun handle-api-rr-update (id-str)
-  "Update R&R request details - Admin/AO Lead/Program Manager only."
+  "Update R&R request details - Admin/AO Lead only (Program Manager is read-only)."
   (let* ((user (get-current-user))
          (user-id (getf user :|id|))
          (user-role (getf user :|role|))
          (is-admin (or (user-is-admin-p user)
-                       (string= user-role "ao_lead")
-                       (string= user-role "program_manager")))
+                       (string= user-role "ao_lead")))
          (request-id (parse-integer id-str :junk-allowed t))
          (status (hunchentoot:parameter "status"))
          (start-date (hunchentoot:parameter "start_date"))
