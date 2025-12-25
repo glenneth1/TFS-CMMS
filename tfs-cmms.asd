@@ -30,4 +30,5 @@
                              (:file "master-tracker")
                              (:file "perstat")
                              (:file "sor-reports")
+                             (:file "backup")
                              (:file "routes")))))

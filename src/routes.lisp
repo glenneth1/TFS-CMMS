@@ -204,6 +204,7 @@
                (:ul :class "nav-dropdown-menu"
                  (:li (:a :href "/admin/users" "Users"))
                  (:li (:a :href "/admin/settings" "Settings"))
+                 (:li (:a :href "/admin/backups" "Backups"))
                  (:li (:a :href "/admin/reports" "Reports History")))))))
         (when user
           (cl-who:htm
@@ -1574,6 +1575,10 @@ function updateDatesFromWeek() {
        (handle-admin-settings))
       ((and (eq method :post) (string= uri "/api/admin/settings/update"))
        (handle-api-admin-settings-update))
+      ((string= uri "/admin/backups")
+       (handle-admin-backups))
+      ((and (eq method :post) (string= uri "/api/admin/backup/run"))
+       (handle-api-admin-backup-run))
       
       ;; Pages
       ((string= uri "/")
