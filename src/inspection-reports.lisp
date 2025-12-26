@@ -10,26 +10,72 @@
   (ensure-directories-exist (merge-pathnames "deficiencies/" *uploads-directory*)))
 
 (defun generate-upload-filename (original-name prefix)
-  "Generate a unique filename for an upload."
-  (let* ((extension (pathname-type (pathname original-name)))
-         (timestamp (get-universal-time))
+  "Generate a unique filename for an upload. Always uses .jpg extension for optimized images."
+  (let* ((timestamp (get-universal-time))
          (random-suffix (random 10000)))
-    (format nil "~A-~A-~A.~A" prefix timestamp random-suffix (or extension "jpg"))))
+    (format nil "~A-~A-~A.jpg" prefix timestamp random-suffix)))
+
+(defvar *optimize-script-path*
+  (merge-pathnames "scripts/optimize_image.py" (get-app-directory))
+  "Path to image optimization script.")
+
+(defvar *image-max-dimension* 1920
+  "Maximum dimension (width or height) for uploaded images.")
+
+(defvar *image-quality* 85
+  "JPEG quality for optimized images (1-100).")
+
+(defun optimize-uploaded-image (input-path output-path)
+  "Optimize an uploaded image using Python script.
+   Returns T on success, NIL on failure."
+  (let* ((command (format nil "python3 ~A ~A ~A ~A ~A"
+                          (namestring *optimize-script-path*)
+                          (namestring input-path)
+                          (namestring output-path)
+                          *image-max-dimension*
+                          *image-quality*)))
+    (multiple-value-bind (output error-output exit-code)
+        (uiop:run-program command
+                          :output :string
+                          :error-output :string
+                          :ignore-error-status t)
+      (declare (ignore output))
+      (if (zerop exit-code)
+          t
+          (progn
+            (format t "~&Image optimization failed: ~A~%" error-output)
+            nil)))))
 
 (defun save-uploaded-file (post-param subdir prefix)
   "Save an uploaded file and return the relative path.
    POST-PARAM is the Hunchentoot post parameter (list of path, filename, content-type).
+   Images are automatically optimized (resized, compressed, EXIF stripped).
    Returns the relative path from uploads directory, or NIL if no file."
   (when (and post-param (listp post-param) (first post-param))
     (let* ((temp-path (first post-param))
            (original-name (second post-param))
+           (content-type (third post-param))
            (new-filename (generate-upload-filename original-name prefix))
            (relative-path (format nil "~A/~A" subdir new-filename))
            (full-path (merge-pathnames relative-path *uploads-directory*)))
       (ensure-upload-directories)
-      ;; Copy the temp file to our uploads directory
-      (uiop:copy-file temp-path full-path)
-      relative-path)))
+      ;; Check if it's an image that should be optimized
+      (if (and content-type 
+               (or (search "image/" content-type)
+                   (member (pathname-type (pathname original-name))
+                           '("jpg" "jpeg" "png" "gif" "bmp" "webp")
+                           :test #'string-equal)))
+          ;; Optimize the image
+          (if (optimize-uploaded-image temp-path full-path)
+              relative-path
+              ;; Fallback: copy original if optimization fails
+              (progn
+                (uiop:copy-file temp-path full-path)
+                relative-path))
+          ;; Non-image file: just copy
+          (progn
+            (uiop:copy-file temp-path full-path)
+            relative-path)))))
 
 ;;; PDF Generation
 

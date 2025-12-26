@@ -4,7 +4,7 @@
 
 set -e
 
-LOCAL_BACKUP_DIR="/home/glenn/Notes/org/TFS/CMMS/backups"
+LOCAL_BACKUP_DIR="/home/glenn/Notes/org/TFS/CMMS/tfs-cmms/backups"
 REMOTE_HOST="tfs.is"
 REMOTE_BACKUP_DIR="/opt/tfs-cmms/backups"
 
