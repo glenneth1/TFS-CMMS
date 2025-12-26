@@ -205,6 +205,7 @@
                  (:li (:a :href "/admin/users" "Users"))
                  (:li (:a :href "/admin/settings" "Settings"))
                  (:li (:a :href "/admin/backups" "Backups"))
+                 (:li (:a :href "/admin/system" "System Monitor"))
                  (:li (:a :href "/admin/reports" "Reports History")))))))
         (when user
           (cl-who:htm
@@ -1579,6 +1580,8 @@ function updateDatesFromWeek() {
        (handle-admin-backups))
       ((and (eq method :post) (string= uri "/api/admin/backup/run"))
        (handle-api-admin-backup-run))
+      ((string= uri "/admin/system")
+       (handle-admin-system-monitor))
       
       ;; Pages
       ((string= uri "/")

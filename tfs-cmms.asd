@@ -12,7 +12,8 @@
                #:alexandria
                #:cl-json
                #:cl-ppcre
-               #:ironclad)
+               #:ironclad
+               #:parse-float)
   :components ((:module "src"
                 :components ((:file "package")
                              (:file "config")
@@ -31,4 +32,5 @@
                              (:file "perstat")
                              (:file "sor-reports")
                              (:file "backup")
+                             (:file "system-monitor")
                              (:file "routes")))))
