@@ -6,6 +6,13 @@ tfs-cmms-*.tar.gz
 # Database
 data/*.db
 
+# Backups
+backups/
+
+# Log files
+*.log
+tfs-cmms.log
+
 # Reference files (PDFs, spreadsheets)
 reference/
 
