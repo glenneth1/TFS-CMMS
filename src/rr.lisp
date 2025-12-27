@@ -327,7 +327,62 @@
                     (:input :type "text" :name "travel_from" :required t
                             :placeholder "e.g., London, UK")))
                 (:div :id "date-validation-message" :style "margin-bottom: 1rem;")
-                (:button :type "submit" :class "btn btn-primary" "Submit R&R Request")))))
+                (:button :type "submit" :class "btn btn-primary" "Submit R&R Request"))
+              (:script "
+// R&R Date Validation
+(function() {
+  var startInput = document.getElementById('rr-start-date');
+  var endInput = document.getElementById('rr-end-date');
+  var msgDiv = document.getElementById('date-validation-message');
+  var form = document.getElementById('rr-request-form');
+  
+  // Set minimum end date when start date changes
+  startInput.addEventListener('change', function() {
+    if (this.value) {
+      endInput.min = this.value;
+      // If end date is before start date, clear it
+      if (endInput.value && endInput.value < this.value) {
+        endInput.value = '';
+      }
+    }
+    validateDates();
+  });
+  
+  endInput.addEventListener('change', validateDates);
+  
+  function validateDates() {
+    var start = startInput.value;
+    var end = endInput.value;
+    msgDiv.innerHTML = '';
+    
+    if (start && end) {
+      var startDate = new Date(start);
+      var endDate = new Date(end);
+      
+      if (endDate < startDate) {
+        msgDiv.innerHTML = '<p style=\"color: red;\">⚠ End date must be after start date</p>';
+        return false;
+      }
+      
+      var days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      if (days > 17) {
+        msgDiv.innerHTML = '<p style=\"color: orange;\">⚠ R&R request cannot exceed 17 days (currently ' + days + ' days)</p>';
+        return false;
+      }
+      
+      msgDiv.innerHTML = '<p style=\"color: green;\">✓ ' + days + ' day(s) requested</p>';
+    }
+    return true;
+  }
+  
+  form.addEventListener('submit', function(e) {
+    if (!validateDates()) {
+      e.preventDefault();
+      alert('Please correct the date errors before submitting.');
+    }
+  });
+})();
+"))))
          
          ;; Who's On Leave Calendar Preview (visible to all users including those in probation)
          (:section :class "card"
@@ -383,7 +438,7 @@ function loadLeaveCalendar(monthStr) {
               (:h2 "Pending Requests")
               (:table :class "data-table"
                 (:thead
-                  (:tr (:th "Dates") (:th "Days") (:th "Destination") (:th "Status") (:th "Submitted")))
+                  (:tr (:th "Dates") (:th "Days") (:th "Destination") (:th "Status") (:th "Submitted") (:th "Actions")))
                 (:tbody
                   (dolist (req pending-requests)
                     (cl-who:htm
@@ -394,7 +449,12 @@ function loadLeaveCalendar(monthStr) {
                        (:td (cl-who:str (getf req :|total_days|)))
                        (:td (cl-who:str (or (getf req :|travel_to|) "-")))
                        (:td (:span :class "badge badge-warning" "Pending"))
-                       (:td (cl-who:str (format-date-display (subseq (or (getf req :|requested_at|) "") 0 10))))))))))))
+                       (:td (cl-who:str (format-date-display (subseq (or (getf req :|requested_at|) "") 0 10))))
+                       (:td 
+                         (:form :method "post" :action (format nil "/api/rr/~A/cancel" (getf req :|id|))
+                                :style "display: inline;"
+                                :onsubmit "return confirm('Are you sure you want to cancel this R&R request?');"
+                           (:button :type "submit" :class "btn btn-sm btn-danger" "Cancel")))))))))))
          
          ;; Approved Upcoming
          (when approved-requests
@@ -917,10 +977,34 @@ th { background: #f0f0f0; font-weight: bold; }
       (return-from handle-api-rr-request
         (redirect-to "/rr?error=You%20are%20still%20in%20probation%20period")))
     
+    ;; Check for existing pending request (limit to one at a time)
+    (let ((pending (fetch-one 
+                    "SELECT id FROM rr_requests WHERE user_id = ? AND status = 'Pending'"
+                    user-id)))
+      (when pending
+        (return-from handle-api-rr-request
+          (redirect-to "/rr?error=You%20already%20have%20a%20pending%20R%26R%20request.%20Please%20wait%20for%20it%20to%20be%20reviewed%20or%20cancel%20it%20first."))))
+    
+    ;; Check for approved R&R that hasn't ended yet (must be back in theater first)
+    (let ((active-rr (fetch-one 
+                      "SELECT id, end_date FROM rr_requests 
+                       WHERE user_id = ? AND status = 'Approved' AND end_date >= date('now')
+                       ORDER BY end_date DESC LIMIT 1"
+                      user-id)))
+      (when active-rr
+        (return-from handle-api-rr-request
+          (redirect-to (format nil "/rr?error=You%20have%20an%20approved%20R%26R%20ending%20~A.%20You%20cannot%20submit%20a%20new%20request%20until%20after%20your%20return%20date."
+                               (getf active-rr :|end_date|))))))
+    
     ;; Validate dates
     (let* ((start (parse-date-string start-date))
            (end (parse-date-string end-date))
            (total-days (1+ (round (/ (- end start) 86400)))))
+      
+      ;; Check end date is after start date
+      (when (< end start)
+        (return-from handle-api-rr-request
+          (redirect-to "/rr?error=End%20date%20must%20be%20after%20start%20date")))
       
       ;; Check 17-day limit
       (when (> total-days 17)
@@ -977,6 +1061,27 @@ th { background: #f0f0f0; font-weight: bold; }
             (reject-rr-request request-id user-id comments)
             (redirect-to "/rr/approve?success=Request%20rejected"))
           (redirect-to "/unauthorized")))))
+
+(defun handle-api-rr-cancel (id-str)
+  "Handle R&R cancellation by the user who submitted it."
+  (let* ((user (get-current-user))
+         (user-id (getf user :|id|))
+         (request-id (parse-integer id-str :junk-allowed t))
+         (request (when request-id (get-rr-request request-id))))
+    (cond
+      ;; Request not found
+      ((not request)
+       (redirect-to "/rr?error=Request%20not%20found"))
+      ;; Not the owner
+      ((not (= (getf request :|user_id|) user-id))
+       (redirect-to "/rr?error=You%20can%20only%20cancel%20your%20own%20requests"))
+      ;; Not pending
+      ((not (string= (getf request :|status|) "Pending"))
+       (redirect-to "/rr?error=Only%20pending%20requests%20can%20be%20cancelled"))
+      ;; All good - delete the request
+      (t
+       (execute-sql "DELETE FROM rr_requests WHERE id = ?" request-id)
+       (redirect-to "/rr?success=R%26R%20request%20cancelled")))))
 
 (defun handle-api-rr-check-dates ()
   "API to check date availability (for AJAX validation)."
