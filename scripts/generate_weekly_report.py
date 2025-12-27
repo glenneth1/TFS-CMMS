@@ -721,7 +721,7 @@ def generate_facilities_inspected_table(conn, start_date, end_date, output_path)
 
 
 def get_top5_hazards(conn, start_date, end_date):
-    """Get top 5 deficiency categories (hazards) with counts.
+    """Get top 5 deficiency categories (hazards) with counts and top country.
     
     Args:
         conn: Database connection
@@ -738,23 +738,39 @@ def get_top5_hazards(conn, start_date, end_date):
     ]
     
     if start_date:
-        date_filter = "WHERE inspection_date >= ? AND inspection_date <= ?"
+        date_filter = "WHERE md.inspection_date >= ? AND md.inspection_date <= ?"
         params = [start_date, end_date]
     else:
-        date_filter = "WHERE inspection_date <= ?"
+        date_filter = "WHERE md.inspection_date <= ?"
         params = [end_date]
     
-    # Get counts for each category
+    # Get counts and top country for each category
     results = []
     for category in top5_categories:
-        query = f"""
+        # Get total count
+        count_query = f"""
             SELECT COUNT(*) as cnt 
-            FROM master_deficiencies 
-            {date_filter} AND def_category = ?
+            FROM master_deficiencies md
+            {date_filter} AND md.def_category = ?
         """
-        df = pd.read_sql_query(query, conn, params=params + [category])
-        count = df['cnt'].iloc[0] if not df.empty else 0
-        results.append({'category': category, 'count': count})
+        df_count = pd.read_sql_query(count_query, conn, params=params + [category])
+        count = df_count['cnt'].iloc[0] if not df_count.empty else 0
+        
+        # Get top country for this category
+        country_query = f"""
+            SELECT co.name as country, COUNT(*) as cnt
+            FROM master_deficiencies md
+            JOIN camps ca ON md.camp_id = ca.id
+            JOIN countries co ON ca.country_id = co.id
+            {date_filter} AND md.def_category = ?
+            GROUP BY co.name
+            ORDER BY cnt DESC
+            LIMIT 1
+        """
+        df_country = pd.read_sql_query(country_query, conn, params=params + [category])
+        top_country = df_country['country'].iloc[0] if not df_country.empty else 'N/A'
+        
+        results.append({'category': category, 'count': count, 'top_country': top_country})
     
     return pd.DataFrame(results)
 
@@ -804,27 +820,27 @@ def generate_top5_hazards_chart(conn, start_date, end_date, output_path):
         y_pos = range(len(df_sorted))
         bars = ax.barh(y_pos, df_sorted['count'], color=colors[::-1], edgecolor='white', height=0.6)
         
-        # Set labels
+        # Set labels with top country in brackets
         ax.set_yticks(y_pos)
-        ax.set_yticklabels([cat.upper() for cat in df_sorted['category']], fontsize=10, fontweight='bold')
+        y_labels = [f"{row.category.upper()} ({row.top_country})" for row in df_sorted.itertuples()]
+        ax.set_yticklabels(y_labels, fontsize=10, fontweight='bold')
         ax.set_xlabel('Count', fontsize=11)
         ax.set_title(title, fontsize=14, fontweight='bold', color='#333333', pad=10)
         
         # Add count and percentage labels on bars
         for i, (bar, row) in enumerate(zip(bars, df_sorted.itertuples())):
             width = bar.get_width()
-            label = f"{row.category}, {int(row.count):,}"
-            pct_label = f"({row.percentage:.1f}%)"
+            label = f"{int(row.count):,} ({row.percentage:.1f}%)"
             
             # Position label inside or outside bar based on width
             if width > df_sorted['count'].max() * 0.3:
                 ax.text(width * 0.5, bar.get_y() + bar.get_height()/2,
-                       f"{row.category}, {int(row.count):,}",
-                       ha='center', va='center', fontsize=9, color='white', fontweight='bold')
+                       label,
+                       ha='center', va='center', fontsize=10, color='white', fontweight='bold')
             else:
                 ax.text(width + df_sorted['count'].max() * 0.02, bar.get_y() + bar.get_height()/2,
-                       f"{int(row.count):,} ({row.percentage:.1f}%)",
-                       ha='left', va='center', fontsize=9, color='#333333', fontweight='bold')
+                       label,
+                       ha='left', va='center', fontsize=10, color='#333333', fontweight='bold')
         
         # Style
         ax.spines['top'].set_visible(False)
