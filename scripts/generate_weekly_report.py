@@ -552,6 +552,561 @@ def generate_combined_deficiency_chart(combined_stats, start_date, end_date, out
     print(f"  Generated: {output_path}")
 
 
+def get_facilities_inspected_by_site(conn, start_date, end_date):
+    """Get count of unique facilities inspected by country and site.
+    
+    Args:
+        conn: Database connection
+        start_date: Start date (None for all-time/cumulative)
+        end_date: End date
+    
+    Returns count of unique building_number values per country/camp.
+    """
+    if start_date:
+        date_filter = "WHERE md.inspection_date >= ? AND md.inspection_date <= ?"
+        params = [start_date, end_date]
+    else:
+        date_filter = "WHERE md.inspection_date <= ?"
+        params = [end_date]
+    
+    query = f"""
+        SELECT 
+            co.name as country,
+            ca.name as camp,
+            COUNT(DISTINCT md.building_number) as facilities_inspected
+        FROM master_deficiencies md
+        JOIN camps ca ON md.camp_id = ca.id
+        JOIN countries co ON ca.country_id = co.id
+        {date_filter}
+        GROUP BY co.name, ca.name
+        ORDER BY co.name, ca.name
+    """
+    df = pd.read_sql_query(query, conn, params=params)
+    return df
+
+
+def generate_facilities_inspected_table(conn, start_date, end_date, output_path):
+    """Generate Theater Weekly Totals - Facilities Inspected table.
+    
+    Shows count of unique facilities inspected by Country/Camp for:
+    - Weekly (selected date range)
+    - 90 Days (90 days back from end date)
+    - Cumulative (all time)
+    """
+    # Calculate date ranges
+    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+    day90_start = (end_date_obj - timedelta(days=90)).strftime('%Y-%m-%d')
+    
+    # Get data for all three periods
+    df_weekly = get_facilities_inspected_by_site(conn, start_date, end_date)
+    df_90day = get_facilities_inspected_by_site(conn, day90_start, end_date)
+    df_cumulative = get_facilities_inspected_by_site(conn, None, end_date)
+    
+    if df_cumulative.empty:
+        print("  No facilities data to generate table")
+        return
+    
+    # Merge dataframes on country and camp
+    df = df_cumulative[['country', 'camp']].copy()
+    df = df.merge(df_weekly[['country', 'camp', 'facilities_inspected']], 
+                  on=['country', 'camp'], how='left', suffixes=('', '_weekly'))
+    df = df.rename(columns={'facilities_inspected': 'weekly'})
+    df = df.merge(df_90day[['country', 'camp', 'facilities_inspected']], 
+                  on=['country', 'camp'], how='left')
+    df = df.rename(columns={'facilities_inspected': 'day90'})
+    df = df.merge(df_cumulative[['country', 'camp', 'facilities_inspected']], 
+                  on=['country', 'camp'], how='left')
+    df = df.rename(columns={'facilities_inspected': 'cumulative'})
+    
+    # Fill NaN with 0
+    df = df.fillna(0)
+    
+    # Calculate figure height based on number of rows
+    num_rows = len(df) + 2  # data rows + header + totals
+    fig_height = max(8, num_rows * 0.35 + 2)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(14, fig_height))
+    ax.axis('off')
+    fig.patch.set_facecolor('white')
+    
+    # Title
+    title = "Theater Weekly Totals, Electrical Reports"
+    subtitle = "Number of Facilities Inspected (Power Distribution / Gen Sets)"
+    fig.suptitle(title, fontsize=18, fontweight='bold', color='#000080', y=0.98)
+    ax.set_title(subtitle, fontsize=14, color='#000080', pad=10)
+    
+    # Format date ranges for column headers
+    weekly_header = f"Weekly\n{format_date_display(start_date)} - {format_date_display(end_date)}"
+    day90_header = f"90 Days\n{format_date_display(day90_start)} to {format_date_display(end_date)}"
+    cumulative_header = "Cumulative\nAll Time"
+    
+    col_headers = ['Country', 'Camp', weekly_header, day90_header, cumulative_header]
+    
+    # Build table data with country grouping
+    table_data = []
+    current_country = None
+    
+    for _, row in df.iterrows():
+        country_display = row['country'] if row['country'] != current_country else ''
+        current_country = row['country']
+        
+        table_data.append([
+            country_display,
+            row['camp'],
+            int(row['weekly']),
+            int(row['day90']),
+            int(row['cumulative'])
+        ])
+    
+    # Add totals row
+    totals = ['TOTALS', '', 
+              int(df['weekly'].sum()), 
+              int(df['day90'].sum()), 
+              int(df['cumulative'].sum())]
+    table_data.append(totals)
+    
+    # Create table
+    table = ax.table(
+        cellText=table_data,
+        colLabels=col_headers,
+        loc='center',
+        cellLoc='center'
+    )
+    
+    # Style the table
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1.2, 1.5)
+    
+    # Color the headers
+    header_colors = {
+        0: '#C0C0C0',  # Country - gray
+        1: '#C0C0C0',  # Camp - gray
+        2: '#FFFF00',  # Weekly - yellow
+        3: '#87CEEB',  # 90 Days - light blue
+        4: '#90EE90',  # Cumulative - light green
+    }
+    
+    for col, color in header_colors.items():
+        cell = table[(0, col)]
+        cell.set_facecolor(color)
+        cell.set_text_props(fontweight='bold')
+    
+    # Style data cells
+    for i in range(1, len(table_data) + 1):
+        for j in range(len(col_headers)):
+            cell = table[(i, j)]
+            # Remove gridlines
+            cell.set_edgecolor('white')
+            cell.set_linewidth(0.5)
+            
+            # Color columns
+            if j == 2:  # Weekly
+                cell.set_facecolor('#FFFFCC')  # Light yellow
+            elif j == 3:  # 90 Days
+                cell.set_facecolor('#E0F0FF')  # Light blue
+            elif j == 4:  # Cumulative
+                cell.set_facecolor('#E0FFE0')  # Light green
+            
+            # Bold totals row
+            if i == len(table_data):
+                cell.set_text_props(fontweight='bold')
+                cell.set_facecolor('#DDDDDD')
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"  Generated: {output_path}")
+
+
+def get_top5_hazards(conn, start_date, end_date):
+    """Get top 5 deficiency categories (hazards) with counts.
+    
+    Args:
+        conn: Database connection
+        start_date: Start date (None for all-time/cumulative)
+        end_date: End date
+    """
+    # The top 5 hazard categories
+    top5_categories = [
+        'Unlisted Equipment',
+        'Poor Workmanship', 
+        'Grounding and Bonding',
+        'Improper Terminations',
+        'Improper Use / Damaged'
+    ]
+    
+    if start_date:
+        date_filter = "WHERE inspection_date >= ? AND inspection_date <= ?"
+        params = [start_date, end_date]
+    else:
+        date_filter = "WHERE inspection_date <= ?"
+        params = [end_date]
+    
+    # Get counts for each category
+    results = []
+    for category in top5_categories:
+        query = f"""
+            SELECT COUNT(*) as cnt 
+            FROM master_deficiencies 
+            {date_filter} AND def_category = ?
+        """
+        df = pd.read_sql_query(query, conn, params=params + [category])
+        count = df['cnt'].iloc[0] if not df.empty else 0
+        results.append({'category': category, 'count': count})
+    
+    return pd.DataFrame(results)
+
+
+def generate_top5_hazards_chart(conn, start_date, end_date, output_path):
+    """Generate Top 5 Hazards chart with 3 horizontal bar charts (Weekly, 90-Day, Cumulative).
+    
+    Shows the top 5 deficiency categories with counts and percentages.
+    """
+    # Calculate date ranges
+    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+    day90_start = (end_date_obj - timedelta(days=90)).strftime('%Y-%m-%d')
+    
+    # Get data for all three periods
+    df_weekly = get_top5_hazards(conn, start_date, end_date)
+    df_90day = get_top5_hazards(conn, day90_start, end_date)
+    df_cumulative = get_top5_hazards(conn, None, end_date)
+    
+    # Calculate percentages
+    for df in [df_weekly, df_90day, df_cumulative]:
+        total = df['count'].sum()
+        df['percentage'] = (df['count'] / total * 100) if total > 0 else 0
+    
+    # Create figure with 3 subplots (vertical stack)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 16))
+    fig.patch.set_facecolor('white')
+    
+    # Main title
+    fig.suptitle('Type of Deficiencies Found (Top 5 Hazards)', 
+                 fontsize=20, fontweight='bold', color='#800080', y=0.98)
+    
+    # Color palette (purple theme to match TF SAFE branding)
+    colors = ['#8B008B', '#9932CC', '#BA55D3', '#DA70D6', '#EE82EE']
+    
+    # Data and titles for each chart
+    datasets = [
+        (df_weekly, f"Weekly ({format_date_display(start_date)} to {format_date_display(end_date)})", '#FFFF00'),
+        (df_90day, f"90-Day ({format_date_display(day90_start)} to {format_date_display(end_date)})", '#87CEEB'),
+        (df_cumulative, f"Cumulative (All Time through {format_date_display(end_date)})", '#90EE90')
+    ]
+    
+    for ax, (df, title, title_color) in zip(axes, datasets):
+        # Sort by count descending for display
+        df_sorted = df.sort_values('count', ascending=True)  # ascending for horizontal bar
+        
+        # Create horizontal bar chart
+        y_pos = range(len(df_sorted))
+        bars = ax.barh(y_pos, df_sorted['count'], color=colors[::-1], edgecolor='white', height=0.6)
+        
+        # Set labels
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels([cat.upper() for cat in df_sorted['category']], fontsize=10, fontweight='bold')
+        ax.set_xlabel('Count', fontsize=11)
+        ax.set_title(title, fontsize=14, fontweight='bold', color='#333333', pad=10)
+        
+        # Add count and percentage labels on bars
+        for i, (bar, row) in enumerate(zip(bars, df_sorted.itertuples())):
+            width = bar.get_width()
+            label = f"{row.category}, {int(row.count):,}"
+            pct_label = f"({row.percentage:.1f}%)"
+            
+            # Position label inside or outside bar based on width
+            if width > df_sorted['count'].max() * 0.3:
+                ax.text(width * 0.5, bar.get_y() + bar.get_height()/2,
+                       f"{row.category}, {int(row.count):,}",
+                       ha='center', va='center', fontsize=9, color='white', fontweight='bold')
+            else:
+                ax.text(width + df_sorted['count'].max() * 0.02, bar.get_y() + bar.get_height()/2,
+                       f"{int(row.count):,} ({row.percentage:.1f}%)",
+                       ha='left', va='center', fontsize=9, color='#333333', fontweight='bold')
+        
+        # Style
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.grid(axis='x', alpha=0.3, linestyle='--')
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"  Generated: {output_path}")
+
+
+def get_inspection_summary_by_site(conn, start_date, end_date):
+    """Get inspection summary grouped by country and site with repair responsibility breakdown.
+    
+    C1 = Imminent Danger (LHS = Yes) - Life, Health, Safety imminent
+    C2 = Non-Imminent (LHS = No) - Not imminent danger
+    
+    Args:
+        conn: Database connection
+        start_date: Start date (None for all-time/cumulative)
+        end_date: End date
+    """
+    # Build WHERE clause based on whether start_date is provided
+    if start_date:
+        date_filter = "WHERE md.inspection_date >= ? AND md.inspection_date <= ?"
+        params = [start_date, end_date]
+    else:
+        date_filter = "WHERE md.inspection_date <= ?"
+        params = [end_date]
+    
+    query = f"""
+        SELECT 
+            co.name as country,
+            ca.name as camp,
+            -- Count unique inspections (building + date combinations)
+            COUNT(DISTINCT md.building_number || '_' || md.inspection_date) as num_inspections,
+            -- Total deficiencies
+            COUNT(*) as num_deficiencies,
+            -- TF SAFE C1 (Imminent LHS = Yes)
+            SUM(CASE WHEN (md.repair_by LIKE '%Task Force SAFE%' OR md.repair_by LIKE '%Task Force Safe%') 
+                     AND UPPER(md.lhs_imminent) = 'YES'
+                     AND (md.deficiency_status LIKE '%Closed%' OR md.deficiency_status LIKE '%Repaired%') THEN 1 ELSE 0 END) as tfs_c1_repaired,
+            SUM(CASE WHEN (md.repair_by LIKE '%Task Force SAFE%' OR md.repair_by LIKE '%Task Force Safe%') 
+                     AND UPPER(md.lhs_imminent) = 'YES'
+                     AND md.deficiency_status LIKE '%Mitigated%' THEN 1 ELSE 0 END) as tfs_c1_mitigated,
+            -- TF SAFE C2 (Non-Imminent LHS = No)
+            SUM(CASE WHEN (md.repair_by LIKE '%Task Force SAFE%' OR md.repair_by LIKE '%Task Force Safe%') 
+                     AND (UPPER(md.lhs_imminent) = 'NO' OR md.lhs_imminent IS NULL OR TRIM(md.lhs_imminent) = '')
+                     AND (md.deficiency_status LIKE '%Closed%' OR md.deficiency_status LIKE '%Repaired%') THEN 1 ELSE 0 END) as tfs_c2_repaired,
+            SUM(CASE WHEN (md.repair_by LIKE '%Task Force SAFE%' OR md.repair_by LIKE '%Task Force Safe%') 
+                     AND (UPPER(md.lhs_imminent) = 'NO' OR md.lhs_imminent IS NULL OR TRIM(md.lhs_imminent) = '')
+                     AND (md.deficiency_status = 'Open' OR md.deficiency_status LIKE '%Open%') THEN 1 ELSE 0 END) as tfs_c2_open,
+            -- O&M C1 (Imminent LHS = Yes)
+            SUM(CASE WHEN md.repair_by LIKE '%O&M%' 
+                     AND UPPER(md.lhs_imminent) = 'YES'
+                     AND (md.deficiency_status LIKE '%Closed%' OR md.deficiency_status LIKE '%Repaired%') THEN 1 ELSE 0 END) as om_c1_repaired,
+            SUM(CASE WHEN md.repair_by LIKE '%O&M%' 
+                     AND UPPER(md.lhs_imminent) = 'YES'
+                     AND md.deficiency_status LIKE '%Mitigated%' THEN 1 ELSE 0 END) as om_c1_mitigated,
+            -- O&M C2 (Non-Imminent LHS = No)
+            SUM(CASE WHEN md.repair_by LIKE '%O&M%' 
+                     AND (UPPER(md.lhs_imminent) = 'NO' OR md.lhs_imminent IS NULL OR TRIM(md.lhs_imminent) = '')
+                     AND (md.deficiency_status LIKE '%Closed%' OR md.deficiency_status LIKE '%Repaired%') THEN 1 ELSE 0 END) as om_c2_repaired,
+            SUM(CASE WHEN md.repair_by LIKE '%O&M%' 
+                     AND (UPPER(md.lhs_imminent) = 'NO' OR md.lhs_imminent IS NULL OR TRIM(md.lhs_imminent) = '')
+                     AND (md.deficiency_status = 'Open' OR md.deficiency_status LIKE '%Open%') THEN 1 ELSE 0 END) as om_c2_open,
+            -- Military C1 (Imminent LHS = Yes)
+            SUM(CASE WHEN md.repair_by LIKE '%Military%' 
+                     AND UPPER(md.lhs_imminent) = 'YES'
+                     AND (md.deficiency_status LIKE '%Closed%' OR md.deficiency_status LIKE '%Repaired%') THEN 1 ELSE 0 END) as mil_c1_repaired,
+            SUM(CASE WHEN md.repair_by LIKE '%Military%' 
+                     AND UPPER(md.lhs_imminent) = 'YES'
+                     AND md.deficiency_status LIKE '%Mitigated%' THEN 1 ELSE 0 END) as mil_c1_mitigated,
+            -- Military C2 (Non-Imminent LHS = No)
+            SUM(CASE WHEN md.repair_by LIKE '%Military%' 
+                     AND (UPPER(md.lhs_imminent) = 'NO' OR md.lhs_imminent IS NULL OR TRIM(md.lhs_imminent) = '')
+                     AND (md.deficiency_status LIKE '%Closed%' OR md.deficiency_status LIKE '%Repaired%') THEN 1 ELSE 0 END) as mil_c2_repaired,
+            SUM(CASE WHEN md.repair_by LIKE '%Military%' 
+                     AND (UPPER(md.lhs_imminent) = 'NO' OR md.lhs_imminent IS NULL OR TRIM(md.lhs_imminent) = '')
+                     AND (md.deficiency_status = 'Open' OR md.deficiency_status LIKE '%Open%') THEN 1 ELSE 0 END) as mil_c2_open
+        FROM master_deficiencies md
+        JOIN camps ca ON md.camp_id = ca.id
+        JOIN countries co ON ca.country_id = co.id
+        {date_filter}
+        GROUP BY co.name, ca.name
+        ORDER BY co.name, ca.name
+    """
+    df = pd.read_sql_query(query, conn, params=params)
+    return df
+
+
+def generate_inspection_data_table(conn, start_date, end_date, output_path, period_label="Weekly"):
+    """Generate an Inspection Data table as an image.
+    
+    Args:
+        conn: Database connection
+        start_date: Start date for data range (None for cumulative/all-time)
+        end_date: End date for data range
+        output_path: Path to save the image
+        period_label: Label for the period (e.g., "Weekly", "90-Day", "Cumulative")
+    """
+    df = get_inspection_summary_by_site(conn, start_date, end_date)
+    
+    if df.empty:
+        print(f"  No {period_label.lower()} inspection data to generate table")
+        return
+    
+    # Calculate figure height based on number of rows
+    num_rows = len(df) + 2  # data rows + header + totals
+    fig_height = max(6, num_rows * 0.35 + 2)
+    
+    # Create figure with appropriate size
+    fig, ax = plt.subplots(figsize=(18, fig_height))
+    ax.axis('off')
+    fig.patch.set_facecolor('white')
+    
+    # Title
+    title = f"Task Force SAFE - Inspection Data ({period_label})"
+    if start_date:
+        subtitle = f"{format_date_display(start_date)} to {format_date_display(end_date)}"
+    else:
+        subtitle = f"All Data through {format_date_display(end_date)}"
+    fig.suptitle(title, fontsize=18, fontweight='bold', color='#800080', y=0.98)
+    ax.set_title(subtitle, fontsize=14, color='#800080', pad=5)
+    
+    # Prepare table data
+    # Column headers (multi-level)
+    col_headers = [
+        'Country', 'Camp', 'No. of\nInspections', 'No. of\nDeficiencies',
+        'Repaired', 'Mitigated',  # TF SAFE C1
+        'Repaired', 'Mitigated',  # O&M C1
+        'Repaired', 'Mitigated',  # Military C1
+        'Repaired', 'Open',       # TF SAFE C2
+        'Repaired', 'Open',       # O&M C2
+        'Repaired', 'Open'        # Military C2
+    ]
+    
+    # Build table data with country grouping
+    table_data = []
+    current_country = None
+    
+    for _, row in df.iterrows():
+        country_display = row['country'] if row['country'] != current_country else ''
+        current_country = row['country']
+        
+        table_data.append([
+            country_display,
+            row['camp'],
+            int(row['num_inspections']),
+            int(row['num_deficiencies']),
+            int(row['tfs_c1_repaired']),
+            int(row['tfs_c1_mitigated']),
+            int(row['om_c1_repaired']),
+            int(row['om_c1_mitigated']),
+            int(row['mil_c1_repaired']),
+            int(row['mil_c1_mitigated']),
+            int(row['tfs_c2_repaired']),
+            int(row['tfs_c2_open']),
+            int(row['om_c2_repaired']),
+            int(row['om_c2_open']),
+            int(row['mil_c2_repaired']),
+            int(row['mil_c2_open'])
+        ])
+    
+    # Add totals row
+    totals = ['TOTALS', '']
+    totals.append(int(df['num_inspections'].sum()))
+    totals.append(int(df['num_deficiencies'].sum()))
+    totals.append(int(df['tfs_c1_repaired'].sum()))
+    totals.append(int(df['tfs_c1_mitigated'].sum()))
+    totals.append(int(df['om_c1_repaired'].sum()))
+    totals.append(int(df['om_c1_mitigated'].sum()))
+    totals.append(int(df['mil_c1_repaired'].sum()))
+    totals.append(int(df['mil_c1_mitigated'].sum()))
+    totals.append(int(df['tfs_c2_repaired'].sum()))
+    totals.append(int(df['tfs_c2_open'].sum()))
+    totals.append(int(df['om_c2_repaired'].sum()))
+    totals.append(int(df['om_c2_open'].sum()))
+    totals.append(int(df['mil_c2_repaired'].sum()))
+    totals.append(int(df['mil_c2_open'].sum()))
+    table_data.append(totals)
+    
+    # Create table
+    table = ax.table(
+        cellText=table_data,
+        colLabels=col_headers,
+        loc='center',
+        cellLoc='center'
+    )
+    
+    # Style the table
+    table.auto_set_font_size(False)
+    table.set_fontsize(8)
+    table.scale(1.2, 1.5)
+    
+    # Color coding
+    header_colors = {
+        (0, 0): '#DDD9C4',  # Country
+        (0, 1): '#DDD9C4',  # Camp
+        (0, 2): '#FFFF00',  # Inspections (yellow)
+        (0, 3): '#FF0000',  # Deficiencies (red)
+    }
+    
+    # TF SAFE headers (purple)
+    for col in [4, 5, 10, 11]:
+        header_colors[(0, col)] = '#800080'
+    
+    # O&M headers (green)
+    for col in [6, 7, 12, 13]:
+        header_colors[(0, col)] = '#00FF00'
+    
+    # Military headers (red)
+    for col in [8, 9, 14, 15]:
+        header_colors[(0, col)] = '#FF0000'
+    
+    # Apply header colors
+    for (row, col), color in header_colors.items():
+        cell = table[(row, col)]
+        cell.set_facecolor(color)
+        if color in ['#800080', '#FF0000']:
+            cell.set_text_props(color='white', fontweight='bold')
+        else:
+            cell.set_text_props(fontweight='bold')
+    
+    # Style data cells - alternate row colors and highlight deficiency column
+    for i in range(1, len(table_data) + 1):
+        for j in range(len(col_headers)):
+            cell = table[(i, j)]
+            # Remove cell borders (no gridlines)
+            cell.set_edgecolor('white')
+            cell.set_linewidth(0.5)
+            
+            # Yellow background for inspections column
+            if j == 2:
+                cell.set_facecolor('#FFFF99')
+            # Red background for deficiencies column  
+            elif j == 3:
+                cell.set_facecolor('#FF9999')
+            # Light purple for TF SAFE columns
+            elif j in [4, 5, 10, 11]:
+                cell.set_facecolor('#E6E0F8')
+            # Light green for O&M columns
+            elif j in [6, 7, 12, 13]:
+                cell.set_facecolor('#E0FFE0')
+            # Light red for Military columns
+            elif j in [8, 9, 14, 15]:
+                cell.set_facecolor('#FFE0E0')
+            
+            # Bold totals row
+            if i == len(table_data):
+                cell.set_text_props(fontweight='bold')
+                cell.set_facecolor('#DDDDDD')
+    
+    # Add group headers above the main headers - positioned relative to table
+    # Adjust header_y based on number of rows (more rows = lower position needed)
+    header_y = 0.92 if num_rows < 15 else 0.95  # Position higher above the table
+    ax.text(0.32, header_y, 'TF SAFE - C1', fontsize=9, fontweight='bold', 
+            color='white', ha='center', transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#800080', edgecolor='none'))
+    ax.text(0.44, header_y, 'O&M - C1', fontsize=9, fontweight='bold',
+            color='black', ha='center', transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#00FF00', edgecolor='none'))
+    ax.text(0.56, header_y, 'Military - C1', fontsize=9, fontweight='bold',
+            color='white', ha='center', transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#FF0000', edgecolor='none'))
+    ax.text(0.68, header_y, 'TF SAFE - C2', fontsize=9, fontweight='bold',
+            color='white', ha='center', transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#800080', edgecolor='none'))
+    ax.text(0.80, header_y, 'O&M - C2', fontsize=9, fontweight='bold',
+            color='black', ha='center', transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#00FF00', edgecolor='none'))
+    ax.text(0.92, header_y, 'Military - C2', fontsize=9, fontweight='bold',
+            color='white', ha='center', transform=ax.transAxes,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#FF0000', edgecolor='none'))
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"  Generated: {output_path}")
+
+
 def generate_repair_responsibility_chart(conn, start_date, end_date, output_path):
     """Generate chart showing deficiencies by repair responsibility with status breakdown."""
     # Get cumulative, 90-day, and weekly data by repair responsibility
@@ -622,9 +1177,24 @@ def generate_repair_responsibility_chart(conn, start_date, end_date, output_path
     ax2 = axes[1]
     ax2.set_facecolor('white')
     colors = ['#3498db', '#e67e22', '#9b59b6']
-    wedges, texts, autotexts = ax2.pie(cumulative_df['total'], 
+    
+    # Pre-calculate percentages and use actual counts to avoid rounding errors
+    totals = cumulative_df['total'].tolist()
+    grand_total = sum(totals)
+    
+    def make_autopct(values):
+        def autopct(pct):
+            idx = int(round(pct/100 * len(values)))
+            # Find the actual value based on the percentage
+            for i, v in enumerate(values):
+                if abs(v/grand_total*100 - pct) < 0.1:
+                    return f'{pct:.1f}%\n({int(v):,})'
+            return f'{pct:.1f}%'
+        return autopct
+    
+    wedges, texts, autotexts = ax2.pie(totals, 
                                         labels=responsibilities,
-                                        autopct=lambda pct: f'{pct:.1f}%\n({int(pct/100*cumulative_df["total"].sum()):,})',
+                                        autopct=make_autopct(totals),
                                         colors=colors[:len(responsibilities)],
                                         explode=[0.02] * len(responsibilities),
                                         shadow=False,
@@ -682,44 +1252,50 @@ def generate_weekly_report(start_date=None, end_date=None):
     # Generate slides
     print("\nGenerating slides...")
     
+    # Calculate 90-day date range (90 days back from end_date)
+    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+    day90_start = (end_date_obj - timedelta(days=90)).strftime('%Y-%m-%d')
+    
     # 1. Operational Updates slide
     generate_operational_updates_slide(
         weekly_stats, start_date, end_date,
         os.path.join(report_dir, '01_operational_updates.png')
     )
     
-    # 2. Weekly by country chart
-    generate_weekly_by_country_chart(
-        weekly_stats, start_date, end_date,
-        os.path.join(report_dir, '02_weekly_by_country.png')
+    # 2. Theater Weekly Totals - Facilities Inspected table
+    generate_facilities_inspected_table(
+        conn, start_date, end_date,
+        os.path.join(report_dir, '02_Facilities_Inspected.png')
     )
     
-    # 3. Deficiency types chart with country breakdown
-    generate_deficiency_types_chart(
-        def_types, start_date, end_date,
-        os.path.join(report_dir, '03_deficiency_types.png'),
-        def_types_by_country=def_types_by_country
+    # 3. Top 5 Hazards chart (Weekly, 90-Day, Cumulative bar charts)
+    generate_top5_hazards_chart(
+        conn, start_date, end_date,
+        os.path.join(report_dir, '03_Top5_Hazards.png')
     )
     
-    # 4. Cumulative stats
-    generate_cumulative_stats_slide(
-        cumulative_stats, cumulative_by_country,
-        os.path.join(report_dir, '04_cumulative_stats.png')
+    # 4. Weekly Inspection Data table by country/site
+    generate_inspection_data_table(
+        conn, start_date, end_date,
+        os.path.join(report_dir, '04_Inspection_Data_Weekly.png'),
+        period_label="Weekly"
     )
     
-    # 5. 90-day chart
-    generate_90_day_chart(
-        stats_90_day,
-        os.path.join(report_dir, '05_90_day_stats.png')
+    # 5. 90-Day Inspection Data table by country/site
+    generate_inspection_data_table(
+        conn, day90_start, end_date,
+        os.path.join(report_dir, '05_Inspection_Data_90Day.png'),
+        period_label="90-Day"
     )
     
-    # 6. NEW: Combined deficiency chart (Cumulative, 90-Day, Weekly on one chart)
-    generate_combined_deficiency_chart(
-        combined_stats, start_date, end_date,
-        os.path.join(report_dir, '06_combined_deficiency_comparison.png')
+    # 6. Cumulative Inspection Data table by country/site (all time)
+    generate_inspection_data_table(
+        conn, None, end_date,
+        os.path.join(report_dir, '06_Inspection_Data_Cumulative.png'),
+        period_label="Cumulative"
     )
     
-    # 7. NEW: Repair responsibility breakdown chart
+    # 7. Repair responsibility breakdown chart
     generate_repair_responsibility_chart(
         conn, start_date, end_date,
         os.path.join(report_dir, '07_repair_responsibility.png')

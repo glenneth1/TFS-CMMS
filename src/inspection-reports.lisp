@@ -454,7 +454,14 @@
                  (occurrences (or (getf def :|num_occurrences|) 1))
                  (imminent (or (getf def :|imminent_danger|) "No"))
                  (sor-issued-to (getf def :|sor_issued_to|))
-                 (def-status (or (getf def :|deficiency_status|) "Open"))
+                 (raw-status (or (getf def :|deficiency_status|) "Open"))
+                 ;; C1 (Imminent) deficiencies that are Open should be Mitigated
+                 ;; since inspectors address immediate danger on-site
+                 (def-status (if (and (string-equal imminent "Yes")
+                                      (or (string-equal raw-status "Open")
+                                          (search "Open" raw-status)))
+                                 "Mitigated"
+                                 raw-status))
                  (rac (getf def :|rac_score|)))
             ;; Check if this deficiency already exists in master tracker
             (let ((existing (fetch-one 
