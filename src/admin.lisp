@@ -183,11 +183,19 @@
                                       (cl-who:str r)))))))
                     (:div :class "form-row"
                       (:div :class "form-group"
+                        (:label "Staff Category (for R&R)")
+                        (:select :name "staff_category"
+                          (:option :value "" :selected (null (getf edit-user :|staff_category|)) "-- Select --")
+                          (:option :value "Electrician" :selected (equal "Electrician" (getf edit-user :|staff_category|)) "Electrician / Inspector")
+                          (:option :value "PMO" :selected (equal "PMO" (getf edit-user :|staff_category|)) "PMO")
+                          (:option :value "QC" :selected (equal "QC" (getf edit-user :|staff_category|)) "QC")))
+                      (:div :class "form-group"
                         (:label "Electrician Type")
                         (:select :name "electrician_type"
                           (:option :value "" :selected (null (getf edit-user :|electrician_type|)) "N/A")
                           (:option :value "Master" :selected (equal "Master" (getf edit-user :|electrician_type|)) "Master Electrician")
-                          (:option :value "Journeyman" :selected (equal "Journeyman" (getf edit-user :|electrician_type|)) "Journeyman")))
+                          (:option :value "Journeyman" :selected (equal "Journeyman" (getf edit-user :|electrician_type|)) "Journeyman"))))
+                   (:div :class "form-row"
                       (:div :class "form-group"
                         (:label "Team Number")
                         (:input :type "text" :name "team_number" :placeholder "e.g., 230"
@@ -290,6 +298,7 @@
         (let ((full-name (get-param "full_name"))
               (email (get-param "email"))
               (role (get-param "role"))
+              (staff-category (get-param "staff_category"))
               (electrician-type (get-param "electrician_type"))
               (team-number (get-param "team_number"))
               (current-camp-id (parse-int (get-param "current_camp_id")))
@@ -306,10 +315,11 @@
                        :hire-date (when (and hire-date (not (string= hire-date ""))) hire-date)
                        :bog-date (when (and bog-date (not (string= bog-date ""))) bog-date)
                        :active (= active 1))
-          ;; Update is_admin and current_camp_id separately
-          (execute-sql "UPDATE users SET is_admin = ?, current_camp_id = ? WHERE id = ?" 
+          ;; Update is_admin, current_camp_id, and staff_category separately
+          (execute-sql "UPDATE users SET is_admin = ?, current_camp_id = ?, staff_category = ? WHERE id = ?" 
                        (or is-admin 0) 
                        current-camp-id
+                       (when (and staff-category (not (string= staff-category ""))) staff-category)
                        user-id)
           ;; Sync location to linked personnel record
           (execute-sql "UPDATE personnel SET current_camp_id = ? WHERE user_id = ?"
